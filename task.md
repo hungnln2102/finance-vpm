@@ -41,3 +41,4 @@
   - [x] 12.6: Báo cáo tháng (Report) - P&L, thực chi vs ngân sách, đối chiếu quỹ tiền mặt & ACB.
   - [x] 12.7: Khóa sổ (Closing) - 5 tiêu chí khóa sổ, phân quyền VPM, nhật ký kiểm toán.
 - [x] Bước 13: Đảm bảo 0 runtime errors, 0 cảnh báo console, giao diện chuẩn Design System cao cấp.
+- [x] Bước 14: Biên soạn tài liệu đặc tả toàn diện Logic Nghiệp vụ & Kế toán ([LOGIC.md](file:///d:/Desktop/admin/finance-vpm/LOGIC.md)) gồm 9 chương chi tiết.
