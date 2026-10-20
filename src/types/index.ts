@@ -11,7 +11,33 @@ export type ActiveTab =
 
 export type Direction = 'in' | 'out';
 
-export type TransactionStatus = 'pending' | 'checked' | 'approved' | 'returned' | 'migrated';
+export type WorkflowRole = 'operator' | 'admin' | 'master';
+
+export type TransactionStatus = 
+  | 'draft' 
+  | 'pending_admin' 
+  | 'pending_master' 
+  | 'posted' 
+  | 'rejected' 
+  | 'pending' 
+  | 'checked' 
+  | 'approved' 
+  | 'returned' 
+  | 'migrated';
+
+export interface BankWebhookLog {
+  id: string;
+  bankTxId: string;
+  date: string;
+  acc: AccountKey;
+  dir: Direction;
+  amount: number;
+  description: string;
+  matchedTxId?: string;
+  status: 'unmatched' | 'matched' | 'auto_matched';
+  rawPayload?: any;
+}
+
 
 export type TransactionType = 
   | 'THU_KH' 
