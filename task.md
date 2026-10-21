@@ -42,3 +42,9 @@
   - [x] 12.7: Khóa sổ (Closing) - 5 tiêu chí khóa sổ, phân quyền VPM, nhật ký kiểm toán.
 - [x] Bước 13: Đảm bảo 0 runtime errors, 0 cảnh báo console, giao diện chuẩn Design System cao cấp.
 - [x] Bước 14: Biên soạn tài liệu đặc tả toàn diện Logic Nghiệp vụ & Kế toán ([LOGIC.md](file:///d:/Desktop/admin/finance-vpm/LOGIC.md)) gồm 9 chương chi tiết.
+
+---
+
+## 📊 Giai đoạn 4: Chuẩn hóa Mô hình Dữ liệu (Database Schema) & Tài liệu Khách hàng
+- [x] Bước 15: Thiết kế và xuất bản toàn bộ Cơ sở dữ liệu ra file Excel [`Database_Finance_VPM.xlsx`](file:///d:/Desktop/admin/finance-vpm/Database_Finance_VPM.xlsx) chuẩn hóa 15 phân hệ nghiệp vụ, dòng 1 ID kỹ thuật, dòng 2 Tên tiếng Việt và 3-4 dòng dữ liệu demo thực tế theo [LOGIC.md](file:///d:/Desktop/admin/finance-vpm/LOGIC.md) & [MASTER_PLAN_V2.md](file:///d:/Desktop/admin/finance-vpm/MASTER_PLAN_V2.md).
+
