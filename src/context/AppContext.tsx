@@ -14,6 +14,7 @@ import { KEY, TODAY, ROLES } from '../data/constants';
 import { dmy, mon, monthLabel, fmt } from '../utils/formatters';
 import { needsApproval } from '../services/financeService';
 import { detectAttendanceAlerts } from '../services/payrollService';
+import { gasService, isGasEnvironment } from '../services/gasService';
 
 export interface ToastState {
   message: string;
@@ -157,6 +158,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, 2800);
     return () => clearTimeout(timer);
   }, [toast.visible]);
+
+  // Load data from Google Apps Script if running inside GAS Web App
+  useEffect(() => {
+    if (isGasEnvironment()) {
+      gasService.fetchInitialData().then((gasData) => {
+        if (gasData && gasData.tx && gasData.tx.length > 0) {
+          setState((prev) => ({
+            ...prev,
+            ...gasData
+          }));
+          showToast('Đã đồng bộ dữ liệu mới nhất từ Google Sheets', 'success');
+        }
+      });
+    }
+  }, [showToast]);
 
   // Persist State to localStorage
   useEffect(() => {
@@ -310,6 +326,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { ...prev, tx: list };
       });
 
+      gasService.addTransaction(newTx);
       addLog(`Ghi ${newTx.id} · ${newTx.desc} · ${fmt(newTx.amt)} đ`);
       setUi((prev) => ({ ...prev, month: mon(data.date) }));
 
@@ -331,6 +348,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         list.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
         return { ...prev, tx: list };
       });
+      gasService.updateTransaction(id, updates);
       addLog(`Cập nhật giao dịch ${id}`);
       showToast('Đã lưu phân loại giao dịch', 'success');
     },
@@ -345,6 +363,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'checked' } : t))
       }));
+      gasService.updateTransaction(id, { status: 'checked' });
       addLog(`Kiểm tra ${tx.id} · ${tx.desc}`);
       showToast(needsApproval(tx) ? 'Đã kiểm, chuyển chị Giàu duyệt' : 'Đã kiểm, giao dịch hoàn tất', 'success');
     },
@@ -359,6 +378,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'returned', note: 'VPM yêu cầu bổ sung chứng từ' } : t))
       }));
+      gasService.updateTransaction(id, { status: 'returned', note: 'VPM yêu cầu bổ sung chứng từ' });
       addLog(`Trả lại ${tx.id}`);
       showToast('Đã trả lại cho Tiên', 'warn');
     },
@@ -373,6 +393,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'approved' } : t))
       }));
+      gasService.updateTransaction(id, { status: 'approved' });
       addLog(`Duyệt chi ${tx.id} · ${fmt(tx.amt)} đ`);
       showToast('Đã duyệt chi', 'success');
     },
@@ -393,6 +414,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         contracts: [...prev.contracts, newContract]
       }));
 
+      gasService.addContract(newContract);
       addLog(`Thêm hợp đồng ${newContract.id} · ${newContract.customer}`);
       const rate = newContract.fee ? newContract.disc / newContract.fee : 0;
       if (rate > 0.3) {
@@ -410,10 +432,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         contracts: prev.contracts.map((c) => (c.id === id ? { ...c, discApproved: true } : c))
       }));
+      gasService.addContract({ ...state.contracts.find((c) => c.id === id)!, discApproved: true });
       addLog(`Duyệt chiết khấu ${id}`);
       showToast('Đã duyệt chiết khấu', 'success');
     },
-    [addLog, showToast]
+    [state.contracts, addLog, showToast]
   );
 
   const addGiftMovement = useCallback(
@@ -430,6 +453,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           mv: [...prev.gifts.mv, newMv]
         }
       }));
+
+      gasService.addGiftMovement(newMv);
 
       const itemObj = state.gifts.items.find((i) => i.id === mv.item);
       const name = itemObj ? itemObj.name : mv.item;
@@ -459,6 +484,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } else {
           updatedDays[dateIso] = nextVal;
         }
+
+        gasService.saveAttendance(staffMember.name, dateIso, nextVal ?? '');
 
         return {
           ...prev,
@@ -514,6 +541,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       });
       addLog(`Giao ngân sách ${monthLabel(month)}`);
+      gasService.updateBudget(month, category, amount);
       showToast('Đã lưu ngân sách', 'success');
     },
     [addLog, showToast]
@@ -542,10 +570,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           [month]: TODAY
         }
       }));
+      gasService.setMonthLock(month, true, ui.role);
       addLog(`Khóa sổ ${monthLabel(month)}`);
       showToast(`Đã khóa sổ ${monthLabel(month).toLowerCase()}`, 'success');
     },
-    [addLog, showToast]
+    [ui.role, addLog, showToast]
   );
 
   const unlockMonth = useCallback(
@@ -555,10 +584,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         delete newLocks[month];
         return { ...prev, locks: newLocks };
       });
+      gasService.setMonthLock(month, false, ui.role);
       addLog(`Mở khóa ${monthLabel(month)}`);
       showToast('Đã mở khóa', 'info');
     },
-    [addLog, showToast]
+    [ui.role, addLog, showToast]
   );
 
   const resetData = useCallback(() => {
@@ -568,6 +598,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {}
     const fresh = loadInitialState();
     setState(fresh);
+    gasService.syncFullState(fresh);
     showToast('Đã khôi phục dữ liệu gốc từ 8 file khách', 'success');
   }, [showToast]);
 

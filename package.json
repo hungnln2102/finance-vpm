@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:gas": "tsc && vite build && node scripts/build-gas.js && npx tsx scripts/generate-gas-code.js && powershell -Command \"Copy-Item -Force gas/Code.js gas/Code.gs\"",
     "preview": "vite preview"
   },
   "dependencies": {

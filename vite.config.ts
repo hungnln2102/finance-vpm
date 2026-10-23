@@ -14,4 +14,9 @@ export default defineConfig({
     port: 5173,
     open: true,
   },
+  build: {
+    modulePreload: false,
+    target: 'es2020',
+    cssCodeSplit: false,
+  },
 });
