@@ -39,16 +39,54 @@ export const CATS: OpexCategoryMap = {
 };
 
 export const ROLES: Record<Role, string> = {
-  tien: "Tiên · nhập liệu",
-  vpm: "VPM · kiểm soát",
-  giau: "Chị Giàu · duyệt"
+  operator: "🟢 Nhập liệu (Operator)",
+  admin: "🟡 Kế toán trưởng (Supervisor)",
+  master: "👑 Sếp Mavryk (Master)",
+  tien: "Tiên · Nhập liệu",
+  vpm: "VPM · Kiểm soát",
+  giau: "Chị Giàu · Duyệt"
 };
 
 export const ROLE_DEFINITIONS: Record<Role, RoleDefinition> = {
-  tien: { id: "tien", name: "Tiên", title: "Nhập liệu", description: "Ghi nhận giao dịch, phiếu xuất nhập quà, thêm hợp đồng" },
-  vpm: { id: "vpm", name: "VPM", title: "Kiểm soát", description: "Rà soát chứng từ, phân loại chi phí, kiểm tra giao dịch, khóa sổ" },
-  giau: { id: "giau", name: "Chị Giàu", title: "Phê duyệt", description: "Duyệt chi >= 2tr, duyệt chiết khấu hợp đồng, giao ngân sách" }
+  operator: { 
+    id: "operator", 
+    name: "Nhập liệu", 
+    title: "Operator", 
+    description: "Tạo bản nháp chứng từ thu/chi, hợp đồng, phiếu quà, đề xuất kế hoạch đệ trình" 
+  },
+  admin: { 
+    id: "admin", 
+    name: "Kế toán trưởng", 
+    title: "Supervisor", 
+    description: "Đối chiếu biến động Webhook ngân hàng ACB, rà soát chứng từ gốc, sơ duyệt giao dịch, kiểm soát khóa sổ" 
+  },
+  master: { 
+    id: "master", 
+    name: "Sếp Mavryk", 
+    title: "Master", 
+    description: "Quyền tối cao: Phê duyệt cuối cùng ghi vào Sổ Cái (Posted), phê duyệt ngân sách & kế hoạch" 
+  },
+  tien: { 
+    id: "operator", 
+    name: "Tiên (Operator)", 
+    title: "Nhập liệu", 
+    description: "Ghi nhận giao dịch nháp, phiếu xuất nhập quà, thêm hợp đồng" 
+  },
+  vpm: { 
+    id: "admin", 
+    name: "VPM (Supervisor)", 
+    title: "Kiểm soát", 
+    description: "Rà soát chứng từ, đối chiếu Webhook ngân hàng ACB, sơ duyệt giao dịch, khóa sổ" 
+  },
+  giau: { 
+    id: "master", 
+    name: "Chị Giàu (Master)", 
+    title: "Phê duyệt", 
+    description: "Phê duyệt cuối cùng ghi vào Sổ Cái, duyệt chi >= 2tr, duyệt ngân sách" 
+  }
 };
+
+export const WORKFLOW_ROLES: Role[] = ['operator', 'admin', 'master'];
 
 export const APPROVE_LIMIT = 2000000;
 export const DISC_LIMIT = 0.30;

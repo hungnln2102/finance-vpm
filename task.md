@@ -90,6 +90,20 @@
   - [x] 27.3: Bọc bảo vệ an toàn cho các hàm `attDays()`, `seedGifts()`, `syncGasInitial()` để ứng dụng luôn render mượt mà trong mọi trạng thái mạng.
   - [x] 27.4: Kiểm thử tự động trên Headless Edge đạt 0 exception, 0 lỗi cú pháp, render dashboard hoàn hảo (Ảnh chụp nghiệm thu: `login_screen_preview.png`, `app_logged_in_preview.png`).
 
+---
 
-
-
+## 🏛️ Giai đoạn 7: Triển khai Hệ Thống Web Hoàn Thiện Theo Master Blueprint V2 & Upgrade Spec
+- [/] Bước 28: Tái cấu trúc State Schema & Type Definitions:
+  - [ ] 28.1: Nâng cấp [`src/types/index.ts`](file:///d:/Desktop/admin/finance-vpm/src/types/index.ts): Định nghĩa 3 ngạch chuẩn (`operator`, `admin`, `master`), vòng đời 5 trạng thái (`draft`, `pending_admin`, `pending_master`, `posted`, `rejected`), cấu trúc `BankWebhookLog`, `Proposal`, `ProposalThread`, `CostAdjustment`.
+  - [ ] 28.2: Nâng cấp [`src/data/constants.ts`](file:///d:/Desktop/admin/finance-vpm/src/data/constants.ts): Cập nhật `ROLE_DEFINITIONS` và danh mục phân ngạch mới.
+  - [ ] 28.3: Nâng cấp [`src/context/AppContext.tsx`](file:///d:/Desktop/admin/finance-vpm/src/context/AppContext.tsx): Tích hợp State lưu trữ Webhooks, Proposals, CostAdjustments, Auto-Matching Engine và bộ giả lập Webhook ACB.
+- [ ] Bước 29: Nâng cấp Giao diện Điều khiển & Sổ Giao Dịch Gốc:
+  - [ ] 29.1: Nâng cấp [`src/components/layout/TopHeader.tsx`](file:///d:/Desktop/admin/finance-vpm/src/components/layout/TopHeader.tsx): Role Switcher 3 ngạch, nút Giả lập Webhook ACB, hộp thư biến động số dư.
+  - [ ] 29.2: Nâng cấp [`src/features/ledger/LedgerView.tsx`](file:///d:/Desktop/admin/finance-vpm/src/features/ledger/LedgerView.tsx): Bắt buộc phân loại dữ liệu, hiển thị 5 trạng thái, Drawer đối soát Webhook ngân hàng ACB và 1-click Match.
+- [ ] Bước 30: Xây dựng 2 Phân Hội Mới (Proposals & Budget Control):
+  - [ ] 30.1: Xây dựng Phân hội Kế Hoạch & Đệ Trình [`src/features/proposals/ProposalsView.tsx`](file:///d:/Desktop/admin/finance-vpm/src/features/proposals/ProposalsView.tsx) tích hợp luồng Resend mô phỏng và Inbound Threading giải trình.
+  - [ ] 30.2: Xây dựng Phân hội Ngân Sách & Điều Chỉnh Cost [`src/features/budget/BudgetControlView.tsx`](file:///d:/Desktop/admin/finance-vpm/src/features/budget/BudgetControlView.tsx) phân tích độ lệch Variance.
+  - [ ] 30.3: Tích hợp vào [`src/components/layout/RailNav.tsx`](file:///d:/Desktop/admin/finance-vpm/src/components/layout/RailNav.tsx) & [`src/App.tsx`](file:///d:/Desktop/admin/finance-vpm/src/App.tsx).
+- [ ] Bước 31: Kiểm thử toàn diện & Đưa vào vận hành:
+  - [ ] 31.1: Biên dịch TypeScript (`npm run build`) đạt 0 error, 0 warning.
+  - [ ] 31.2: Chạy Dev Server và kiểm thử toàn bộ luồng nghiệp vụ.

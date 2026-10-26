@@ -9,7 +9,9 @@ import {
   Users, 
   BarChart3, 
   Lock,
-  RotateCcw
+  RotateCcw,
+  Send,
+  Target
 } from 'lucide-react';
 import { detectAllIssues, needsApproval } from '../../services/financeService';
 import { TODAY } from '../../data/constants';
@@ -27,6 +29,8 @@ export const RailNav: React.FC = () => {
   const navItems: NavItemConfig[] = [
     { id: 'overview', label: 'Tổng quan', icon: <LayoutDashboard size={18} /> },
     { id: 'ledger', label: 'Sổ giao dịch gốc', icon: <BookOpen size={18} /> },
+    { id: 'proposals', label: 'Kế hoạch & đệ trình', icon: <Send size={18} /> },
+    { id: 'budget', label: 'Ngân sách & Cost', icon: <Target size={18} /> },
     { id: 'debt', label: 'Công nợ', icon: <CreditCard size={18} /> },
     { id: 'gifts', label: 'Quà & ấn phẩm', icon: <Gift size={18} /> },
     { id: 'payroll', label: 'Chấm công & lương', icon: <Users size={18} /> },
@@ -37,12 +41,16 @@ export const RailNav: React.FC = () => {
   // Calculate badge counts
   const badIssuesCount = detectAllIssues(state, TODAY).filter((i) => i.lvl === 'bad').length;
   const pendingTxCount = state.tx.filter(
-    (t) => t.status === 'pending' || (t.status === 'checked' && needsApproval(t))
+    (t) => t.status === 'draft' || t.status === 'pending_admin' || t.status === 'pending_master' || t.status === 'pending'
+  ).length;
+  const pendingProposalCount = (state.proposals || []).filter(
+    (p) => p.status === 'pending_admin' || p.status === 'pending_master'
   ).length;
 
   const badges: Partial<Record<ActiveTab, number>> = {
     overview: badIssuesCount,
-    ledger: pendingTxCount
+    ledger: pendingTxCount,
+    proposals: pendingProposalCount
   };
 
   const handleResetClick = () => {

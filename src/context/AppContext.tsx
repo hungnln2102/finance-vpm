@@ -7,7 +7,11 @@ import {
   Transaction, 
   Contract, 
   GiftMovement, 
-  GiftItem 
+  GiftItem,
+  BankWebhookLog,
+  Proposal,
+  ProposalThread,
+  CostAdjustment
 } from '../types';
 import { SEED_DATA } from '../data/seedData';
 import { KEY, TODAY, ROLES } from '../data/constants';
@@ -48,8 +52,33 @@ interface AppContextType {
   }) => void;
   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
   checkTransaction: (id: string) => void;
-  returnTransaction: (id: string) => void;
+  returnTransaction: (id: string, reason?: string) => void;
   approveTransaction: (id: string) => void;
+  forwardTransaction: (id: string) => void;
+  postTransaction: (id: string) => void;
+  rejectTransaction: (id: string, reason?: string) => void;
+  simulateWebhook: (options?: { dir?: 'in' | 'out'; amount?: number; desc?: string; acc?: string }) => void;
+  matchWebhook: (webhookId: string, txId: string) => void;
+  submitProposal: (data: {
+    title: string;
+    creator: string;
+    creatorEmail: string;
+    department: string;
+    amount: number;
+    date: string;
+    description: string;
+    ccEmails?: string[];
+  }) => void;
+  reviewProposal: (id: string, status: 'pending_master' | 'approved' | 'rejected', comment?: string) => void;
+  addProposalThread: (proposalId: string, content: string, isInboundReply?: boolean) => void;
+  addCostAdjustment: (data: {
+    month: string;
+    category: string;
+    oldBudget: number;
+    newBudget: number;
+    reason: string;
+  }) => void;
+  approveCostAdjustment: (id: string) => void;
   addContract: (data: Omit<Contract, 'id'>) => void;
   approveDiscount: (id: string) => void;
   addGiftMovement: (mv: Omit<GiftMovement, 'd'>) => void;
@@ -93,6 +122,131 @@ function seedInitialGifts(txList: Transaction[]): { items: GiftItem[]; mv: GiftM
   return { items, mv };
 }
 
+function seedInitialWebhooks(): BankWebhookLog[] {
+  return [
+    {
+      id: 'WH-001',
+      bankTxId: 'ACB-847291823',
+      date: '2026-10-15',
+      acc: 'ACB',
+      dir: 'in',
+      amount: 15000000,
+      description: 'NGUYEN VAN CUONG THANH TOAN HOP DONG KH012',
+      status: 'unmatched'
+    },
+    {
+      id: 'WH-002',
+      bankTxId: 'ACB-847291889',
+      date: '2026-10-16',
+      acc: 'ACB',
+      dir: 'in',
+      amount: 25000000,
+      description: 'DFAM CAP VON KINH DOANH THANG 10 HOI THAO',
+      status: 'auto_matched',
+      matchedTxId: 'T202610-001'
+    },
+    {
+      id: 'WH-003',
+      bankTxId: 'ACB-847292100',
+      date: '2026-10-16',
+      acc: 'ACB',
+      dir: 'out',
+      amount: 4500000,
+      description: 'THANH TOAN TIEN THUE VAN PHONG THANG 10',
+      status: 'unmatched'
+    }
+  ];
+}
+
+function seedInitialProposals(): Proposal[] {
+  return [
+    {
+      id: 'PROP-01',
+      code: 'KH-2026-10-01',
+      title: 'Kế hoạch Tổ chức Hội thảo Khách hàng & Ra mắt Gói Bảo hiểm VIP Tháng 10',
+      creator: 'Nguyễn Thị Thảo',
+      creatorEmail: 'thao.nguyen@vpmfinance.vn',
+      department: 'Kinh doanh & Phát triển Khách hàng',
+      amount: 12500000,
+      date: '2026-10-14',
+      description: 'Tổ chức workshop chuyên đề "Bảo hiểm Có Giàu - Tích lũy & Thịnh vượng", dự kiến thu hút 35 khách hàng tiềm năng tại Khách sạn Mường Thanh.',
+      status: 'pending_master',
+      resendSentAt: '2026-10-14 09:30',
+      ccEmails: ['thao.nguyen@vpmfinance.vn', 'ketoan@vpmfinance.vn'],
+      threads: [
+        {
+          id: 'TH-01',
+          sender: 'Nguyễn Thị Thảo (Operator)',
+          role: 'operator',
+          content: 'Em đã gửi hồ sơ dự toán chi tiết kèm danh sách khách mời qua email. Kính nhờ Sếp và Kế toán trưởng xem xét phê duyệt ngân sách.',
+          createdAt: '2026-10-14 09:30'
+        },
+        {
+          id: 'TH-02',
+          sender: 'VPM (Supervisor)',
+          role: 'admin',
+          content: 'Kế toán đã rà soát chứng từ báo giá địa điểm (8.5tr) và quà tặng bốc thăm (4tr). Đã đủ định mức Opex tháng 10. Chuyển tiếp lên Sếp Mavryk phê duyệt.',
+          createdAt: '2026-10-14 14:15'
+        },
+        {
+          id: 'TH-03',
+          sender: 'Sếp Mavryk (Master)',
+          role: 'master',
+          content: 'Kế hoạch tốt. Tuy nhiên cần yêu cầu khách sạn cam kết màn hình LED và tea-break đạt chuẩn. Thảo liên hệ chốt lại rồi anh duyệt chuyển khoản đợt 1.',
+          createdAt: '2026-10-14 16:45',
+          isInboundReply: true
+        }
+      ]
+    },
+    {
+      id: 'PROP-02',
+      code: 'KH-2026-10-02',
+      title: 'Đề xuất In ấn bổ sung Bộ Sales Kit & Quà tặng Tri ân Tư vấn viên',
+      creator: 'Trần Văn Nam',
+      creatorEmail: 'nam.tran@vpmfinance.vn',
+      department: 'Văn phòng & Vận hành',
+      amount: 5800000,
+      date: '2026-10-12',
+      description: 'In ấn 200 cuốn brochure mới, 50 áo đồng phục thương hiệu và 30 túi quà tặng cho đợt tuyển dụng TV mới.',
+      status: 'approved',
+      resendSentAt: '2026-10-12 10:00',
+      ccEmails: ['nam.tran@vpmfinance.vn'],
+      threads: [
+        {
+          id: 'TH-04',
+          sender: 'Trần Văn Nam',
+          role: 'operator',
+          content: 'Đã hoàn tất báo giá nhà in rẻ hơn 10% so với quý trước. Kính đệ trình Sếp.',
+          createdAt: '2026-10-12 10:00'
+        },
+        {
+          id: 'TH-05',
+          sender: 'Sếp Mavryk (Master)',
+          role: 'master',
+          content: 'Đồng ý phê duyệt. Kế toán chi tạm ứng theo hợp đồng in ấn.',
+          createdAt: '2026-10-12 11:30'
+        }
+      ]
+    }
+  ];
+}
+
+function seedInitialCostAdjustments(): CostAdjustment[] {
+  return [
+    {
+      id: 'ADJ-01',
+      month: '2026-10',
+      category: 'SUKIEN',
+      oldBudget: 3000000,
+      newBudget: 8000000,
+      reason: 'Bổ sung ngân sách cho Hội thảo VIP và Workshop trung thu',
+      approvedBy: 'Sếp Mavryk',
+      status: 'approved',
+      createdAt: '2026-10-10'
+    }
+  ];
+}
+
 function loadInitialState(): AppState {
   let saved: any = null;
   try {
@@ -108,9 +262,16 @@ function loadInitialState(): AppState {
   base.locks = {};
   base.close = {};
   base.log = [];
+  base.webhooks = seedInitialWebhooks();
+  base.proposals = seedInitialProposals();
+  base.costAdjustments = seedInitialCostAdjustments();
 
   if (saved && saved.v === 1 && saved.state) {
-    return Object.assign(base, saved.state);
+    const merged = Object.assign(base, saved.state);
+    if (!merged.webhooks || merged.webhooks.length === 0) merged.webhooks = seedInitialWebhooks();
+    if (!merged.proposals || merged.proposals.length === 0) merged.proposals = seedInitialProposals();
+    if (!merged.costAdjustments || merged.costAdjustments.length === 0) merged.costAdjustments = seedInitialCostAdjustments();
+    return merged;
   }
   return base;
 }
@@ -120,7 +281,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [ui, setUi] = useState<UIState>(() => {
     const defaultUi: UIState = {
       view: 'overview',
-      role: 'tien',
+      role: 'operator',
       month: '2026-10',
       sel: null,
       ledgerFilter: 'all',
@@ -186,6 +347,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             contracts: state.contracts,
             gifts: state.gifts,
             budget: state.budget,
+            costAdjustments: state.costAdjustments,
+            webhooks: state.webhooks,
+            proposals: state.proposals,
             locks: state.locks,
             close: state.close,
             att: state.att,
@@ -228,16 +392,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const canDo = useCallback(
     (action: string): boolean => {
       const r = ui.role;
+      const isOperator = r === 'operator' || r === 'tien';
+      const isAdmin = r === 'admin' || r === 'vpm';
+      const isMaster = r === 'master' || r === 'giau';
+
       const permissions: Record<string, boolean> = {
-        add: r === 'tien' || r === 'vpm',
-        check: r === 'vpm',
-        approve: r === 'giau',
-        lock: r === 'vpm',
-        edit: r === 'vpm',
-        att: r === 'tien' || r === 'vpm',
-        gift: r === 'tien' || r === 'vpm',
-        contract: r === 'tien' || r === 'vpm',
-        budget: r === 'giau' || r === 'vpm'
+        add: isOperator || isAdmin,
+        draft: isOperator,
+        check: isAdmin,
+        forward: isAdmin,
+        return: isAdmin,
+        approve: isMaster,
+        post: isMaster,
+        lock: isAdmin,
+        edit: isAdmin,
+        att: isOperator || isAdmin,
+        gift: isOperator || isAdmin,
+        contract: isOperator || isAdmin,
+        budget: isMaster || isAdmin,
+        submit_proposal: isOperator || isAdmin || isMaster,
+        review_proposal: isAdmin || isMaster,
+        match_webhook: isAdmin || isMaster
       };
       return !!permissions[action];
     },
@@ -304,6 +479,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const nextId = 'N' + String(state.tx.length + 1).padStart(4, '0');
       const isOut = ['OPEX', 'UNG_PHI', 'HOAN_UNG', 'CHUYEN_DFAM', 'TAM_UNG'].includes(data.type);
+      
+      let initStatus: Transaction['status'] = 'draft';
+      if (ui.role === 'admin' || ui.role === 'vpm') {
+        initStatus = 'pending_master';
+      } else if (ui.role === 'master' || ui.role === 'giau') {
+        initStatus = 'posted';
+      } else {
+        initStatus = 'pending_admin';
+      }
+
       const newTx: Transaction = {
         id: nextId,
         date: data.date,
@@ -315,7 +500,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cat: data.type === 'OPEX' ? data.cat : '',
         contract: data.contract || '',
         flags: [],
-        status: ui.role === 'vpm' ? 'checked' : 'pending',
+        status: initStatus,
         doc: data.docFile ? data.docFile.name : '',
         src: 'Nhập bởi ' + ROLES[ui.role]
       };
@@ -330,12 +515,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addLog(`Ghi ${newTx.id} · ${newTx.desc} · ${fmt(newTx.amt)} đ`);
       setUi((prev) => ({ ...prev, month: mon(data.date) }));
 
-      if (newTx.status === 'pending') {
-        showToast('Đã ghi, chờ VPM kiểm tra', 'info');
-      } else if (needsApproval(newTx)) {
-        showToast('Đã ghi, chờ chị Giàu duyệt', 'warn');
+      if (newTx.status === 'pending_admin' || newTx.status === 'draft') {
+        showToast('Đã ghi chứng từ, chuyển Admin xem xét đối chiếu Webhook', 'info');
+      } else if (newTx.status === 'pending_master') {
+        showToast('Đã ghi chứng từ, chuyển Sếp Mavryk duyệt', 'warn');
       } else {
-        showToast('Đã ghi vào sổ', 'success');
+        showToast('Đã ghi nhận chính thức vào Sổ Cái', 'success');
       }
     },
     [state.locks, state.tx.length, ui.role, addLog, showToast]
@@ -361,26 +546,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!tx) return;
       setState((prev) => ({
         ...prev,
-        tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'checked' } : t))
+        tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'pending_master' } : t))
       }));
-      gasService.updateTransaction(id, { status: 'checked' });
-      addLog(`Kiểm tra ${tx.id} · ${tx.desc}`);
-      showToast(needsApproval(tx) ? 'Đã kiểm, chuyển chị Giàu duyệt' : 'Đã kiểm, giao dịch hoàn tất', 'success');
+      gasService.updateTransaction(id, { status: 'pending_master' });
+      addLog(`Admin sơ duyệt ${tx.id} · ${tx.desc}`);
+      showToast('Đã sơ duyệt, chuyển tiếp Master phê duyệt', 'success');
     },
     [state.tx, addLog, showToast]
   );
 
-  const returnTransaction = useCallback(
+  const forwardTransaction = useCallback(
     (id: string) => {
       const tx = state.tx.find((t) => t.id === id);
       if (!tx) return;
       setState((prev) => ({
         ...prev,
-        tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'returned', note: 'VPM yêu cầu bổ sung chứng từ' } : t))
+        tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'pending_master' } : t))
       }));
-      gasService.updateTransaction(id, { status: 'returned', note: 'VPM yêu cầu bổ sung chứng từ' });
-      addLog(`Trả lại ${tx.id}`);
-      showToast('Đã trả lại cho Tiên', 'warn');
+      gasService.updateTransaction(id, { status: 'pending_master' });
+      addLog(`Admin chuyển tiếp ${tx.id} lên Master`);
+      showToast('Đã chuyển tiếp lên Master phê duyệt', 'success');
+    },
+    [state.tx, addLog, showToast]
+  );
+
+  const postTransaction = useCallback(
+    (id: string) => {
+      const tx = state.tx.find((t) => t.id === id);
+      if (!tx) return;
+      setState((prev) => ({
+        ...prev,
+        tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'posted' } : t))
+      }));
+      gasService.updateTransaction(id, { status: 'posted' });
+      addLog(`Master phê duyệt cuối cùng đưa vào Sổ Cái: ${tx.id}`);
+      showToast('👑 Đã ghi nhận chính thức vào Sổ Cái (Posted)', 'success');
+    },
+    [state.tx, addLog, showToast]
+  );
+
+  const returnTransaction = useCallback(
+    (id: string, reason?: string) => {
+      const tx = state.tx.find((t) => t.id === id);
+      if (!tx) return;
+      const noteMsg = reason || 'Admin yêu cầu bổ sung chứng từ';
+      setState((prev) => ({
+        ...prev,
+        tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'returned', note: noteMsg } : t))
+      }));
+      gasService.updateTransaction(id, { status: 'returned', note: noteMsg });
+      addLog(`Trả lại ${tx.id}: ${noteMsg}`);
+      showToast('Đã trả lại cho nhân viên nhập liệu', 'warn');
+    },
+    [state.tx, addLog, showToast]
+  );
+
+  const rejectTransaction = useCallback(
+    (id: string, reason?: string) => {
+      const tx = state.tx.find((t) => t.id === id);
+      if (!tx) return;
+      const noteMsg = reason || 'Từ chối giao dịch';
+      setState((prev) => ({
+        ...prev,
+        tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'rejected', note: noteMsg } : t))
+      }));
+      gasService.updateTransaction(id, { status: 'rejected', note: noteMsg });
+      addLog(`Từ chối giao dịch ${tx.id}: ${noteMsg}`);
+      showToast('Đã từ chối giao dịch', 'error');
     },
     [state.tx, addLog, showToast]
   );
@@ -391,13 +623,283 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!tx) return;
       setState((prev) => ({
         ...prev,
-        tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'approved' } : t))
+        tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'posted' } : t))
       }));
-      gasService.updateTransaction(id, { status: 'approved' });
-      addLog(`Duyệt chi ${tx.id} · ${fmt(tx.amt)} đ`);
-      showToast('Đã duyệt chi', 'success');
+      gasService.updateTransaction(id, { status: 'posted' });
+      addLog(`Duyệt chốt sổ ${tx.id} · ${fmt(tx.amt)} đ`);
+      showToast('👑 Đã phê duyệt chốt vào Sổ Cái (Posted)', 'success');
     },
     [state.tx, addLog, showToast]
+  );
+
+  const simulateWebhook = useCallback(
+    (options?: { dir?: 'in' | 'out'; amount?: number; desc?: string; acc?: string }) => {
+      const dir = options?.dir || (Math.random() > 0.35 ? 'in' : 'out');
+      const amount = options?.amount || [5000000, 10000000, 15000000, 20000000, 25000000, 35000000][Math.floor(Math.random() * 6)];
+      const sampleDescsIn = [
+        'KHACH HANG NGUYEN VAN CUONG THANH TOAN HD KH012',
+        'TU VAN VIEN THAO TRA NO TAM UNG HOP DONG TV03',
+        'DFAM CAP VON KINH DOANH THANG 10 HOI THAO',
+        'CHI TRA HOA HONG KINH DOANH THANG 9'
+      ];
+      const sampleDescsOut = [
+        'THANH TOAN TIEN THUE MAT BANG VAN PHONG',
+        'CHI PHI IN AN BROCHURE AN PHAM HOI THAO',
+        'MUA QUA TANG BOC THAM KHACH HANG VIP'
+      ];
+      const desc = options?.desc || (dir === 'in' ? sampleDescsIn[Math.floor(Math.random() * sampleDescsIn.length)] : sampleDescsOut[Math.floor(Math.random() * sampleDescsOut.length)]);
+      const bankTxId = 'ACB-' + Math.floor(100000000 + Math.random() * 900000000);
+      const newWebhookId = 'WH-' + String(state.webhooks.length + 1).padStart(3, '0');
+
+      // Check auto-match with existing pending / draft tx
+      const matchTx = state.tx.find(
+        (t) => t.amt === amount && t.dir === dir && ['draft', 'pending_admin', 'pending'].includes(t.status)
+      );
+
+      const newLog: BankWebhookLog = {
+        id: newWebhookId,
+        bankTxId,
+        date: TODAY,
+        acc: 'ACB',
+        dir,
+        amount,
+        description: desc,
+        status: matchTx ? 'auto_matched' : 'unmatched',
+        matchedTxId: matchTx ? matchTx.id : undefined
+      };
+
+      setState((prev) => {
+        let updatedTx = prev.tx;
+        if (matchTx) {
+          updatedTx = prev.tx.map((t) =>
+            t.id === matchTx.id
+              ? {
+                  ...t,
+                  status: 'pending_master',
+                  doc: (t.doc ? t.doc + ', ' : '') + `Biên lai ${bankTxId}`
+                }
+              : t
+          );
+        }
+        return {
+          ...prev,
+          webhooks: [newLog, ...prev.webhooks],
+          tx: updatedTx
+        };
+      });
+
+      addLog(`Nhận Webhook ACB ${bankTxId} (${dir === 'in' ? '+' : '-'}${fmt(amount)} đ)`);
+      if (matchTx) {
+        showToast(`⚡ Webhook Auto-Matched: Khớp tự động chứng từ ${matchTx.id} (${fmt(amount)} đ)!`, 'success');
+      } else {
+        showToast(`⚡ Nhận biến động ACB: ${dir === 'in' ? '+' : '-'}${fmt(amount)} đ (${bankTxId})`, 'info');
+      }
+    },
+    [state.webhooks.length, state.tx, addLog, showToast]
+  );
+
+  const matchWebhook = useCallback(
+    (webhookId: string, txId: string) => {
+      const wh = state.webhooks.find((w) => w.id === webhookId);
+      const tx = state.tx.find((t) => t.id === txId);
+      if (!wh || !tx) return;
+
+      setState((prev) => ({
+        ...prev,
+        webhooks: prev.webhooks.map((w) =>
+          w.id === webhookId ? { ...w, status: 'matched', matchedTxId: txId } : w
+        ),
+        tx: prev.tx.map((t) =>
+          t.id === txId
+            ? {
+                ...t,
+                status: t.status === 'draft' ? 'pending_admin' : t.status,
+                doc: (t.doc ? t.doc + ', ' : '') + `Biên lai ${wh.bankTxId}`
+              }
+            : t
+        )
+      }));
+
+      addLog(`Khớp Webhook ${wh.bankTxId} với chứng từ ${tx.id}`);
+      showToast(`Đã khớp biên lai ${wh.bankTxId} với chứng từ ${tx.id}`, 'success');
+    },
+    [state.webhooks, state.tx, addLog, showToast]
+  );
+
+  const submitProposal = useCallback(
+    (data: {
+      title: string;
+      creator: string;
+      creatorEmail: string;
+      department: string;
+      amount: number;
+      date: string;
+      description: string;
+      ccEmails?: string[];
+    }) => {
+      const nextNum = state.proposals.length + 1;
+      const code = `KH-2026-10-${String(nextNum).padStart(2, '0')}`;
+      const newProp: Proposal = {
+        id: `PROP-${String(nextNum).padStart(2, '0')}`,
+        code,
+        title: data.title.trim(),
+        creator: data.creator.trim(),
+        creatorEmail: data.creatorEmail.trim(),
+        department: data.department.trim(),
+        amount: Math.round(data.amount),
+        date: data.date || TODAY,
+        description: data.description.trim(),
+        status: 'pending_admin',
+        resendSentAt: TODAY + ' ' + new Date().toTimeString().slice(0, 5),
+        ccEmails: data.ccEmails || [data.creatorEmail],
+        threads: [
+          {
+            id: `TH-${Date.now()}`,
+            sender: `${data.creator} (Operator)`,
+            role: 'operator',
+            content: `Khởi tạo kế hoạch đệ trình qua Resend. Tự động CC tới: ${data.creatorEmail}`,
+            createdAt: TODAY + ' ' + new Date().toTimeString().slice(0, 5)
+          }
+        ]
+      };
+
+      setState((prev) => ({
+        ...prev,
+        proposals: [newProp, ...prev.proposals]
+      }));
+
+      addLog(`Lập kế hoạch đệ trình ${newProp.code} · ${fmt(newProp.amount)} đ`);
+      showToast(`Đã đệ trình kế hoạch ${newProp.code} (Resend Email Outbound & CC nhân viên)`, 'success');
+    },
+    [state.proposals.length, addLog, showToast]
+  );
+
+  const reviewProposal = useCallback(
+    (id: string, status: 'pending_master' | 'approved' | 'rejected', comment?: string) => {
+      const prop = state.proposals.find((p) => p.id === id);
+      if (!prop) return;
+
+      const newThread: ProposalThread = {
+        id: `TH-${Date.now()}`,
+        sender: ROLES[ui.role],
+        role: ui.role,
+        content: comment || (status === 'approved' ? 'Phê duyệt kế hoạch.' : status === 'pending_master' ? 'Sơ duyệt chuyển lên Master.' : 'Từ chối kế hoạch.'),
+        createdAt: TODAY + ' ' + new Date().toTimeString().slice(0, 5)
+      };
+
+      setState((prev) => ({
+        ...prev,
+        proposals: prev.proposals.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                status,
+                threads: [...p.threads, newThread]
+              }
+            : p
+        )
+      }));
+
+      addLog(`${ROLES[ui.role]} cập nhật trạng thái đề xuất ${prop.code} ➔ ${status}`);
+      showToast(`Đã cập nhật đệ trình: ${status === 'approved' ? 'Phê duyệt' : status === 'pending_master' ? 'Chuyển Master' : 'Từ chối'}`, 'success');
+    },
+    [state.proposals, ui.role, addLog, showToast]
+  );
+
+  const addProposalThread = useCallback(
+    (proposalId: string, content: string, isInboundReply?: boolean) => {
+      if (!content.trim()) return;
+      const newThread: ProposalThread = {
+        id: `TH-${Date.now()}`,
+        sender: ROLES[ui.role],
+        role: ui.role,
+        content: content.trim(),
+        createdAt: TODAY + ' ' + new Date().toTimeString().slice(0, 5),
+        isInboundReply
+      };
+
+      setState((prev) => ({
+        ...prev,
+        proposals: prev.proposals.map((p) =>
+          p.id === proposalId
+            ? { ...p, threads: [...p.threads, newThread] }
+            : p
+        )
+      }));
+
+      addLog(`Phản hồi trao đổi kế hoạch ${proposalId}`);
+      showToast(isInboundReply ? 'Đã nhận nội dung giải trình qua Email (Inbound Threading)' : 'Đã đăng trao đổi', 'success');
+    },
+    [ui.role, addLog, showToast]
+  );
+
+  const addCostAdjustment = useCallback(
+    (data: {
+      month: string;
+      category: string;
+      oldBudget: number;
+      newBudget: number;
+      reason: string;
+    }) => {
+      const nextId = `ADJ-${String(state.costAdjustments.length + 1).padStart(2, '0')}`;
+      const isMaster = ui.role === 'master' || ui.role === 'giau';
+      const newAdj: CostAdjustment = {
+        id: nextId,
+        month: data.month,
+        category: data.category,
+        oldBudget: data.oldBudget,
+        newBudget: data.newBudget,
+        reason: data.reason.trim(),
+        status: isMaster ? 'approved' : 'pending',
+        approvedBy: isMaster ? 'Sếp Mavryk' : undefined,
+        createdAt: TODAY
+      };
+
+      setState((prev) => {
+        let updatedBudget = prev.budget;
+        if (newAdj.status === 'approved') {
+          const mBudget = { ...(prev.budget[data.month] || {}) };
+          mBudget[data.category] = data.newBudget;
+          updatedBudget = { ...prev.budget, [data.month]: mBudget };
+        }
+        return {
+          ...prev,
+          costAdjustments: [newAdj, ...prev.costAdjustments],
+          budget: updatedBudget
+        };
+      });
+
+      addLog(`Điều chỉnh chi phí định mức ${newAdj.category} tháng ${data.month}`);
+      showToast(newAdj.status === 'approved' ? 'Đã phê duyệt điều chỉnh chi phí' : 'Đã gửi yêu cầu điều chỉnh cost', 'success');
+    },
+    [state.costAdjustments.length, ui.role, addLog, showToast]
+  );
+
+  const approveCostAdjustment = useCallback(
+    (id: string) => {
+      const adj = state.costAdjustments.find((a) => a.id === id);
+      if (!adj) return;
+
+      setState((prev) => {
+        const mBudget = { ...(prev.budget[adj.month] || {}) };
+        mBudget[adj.category] = adj.newBudget;
+
+        return {
+          ...prev,
+          costAdjustments: prev.costAdjustments.map((a) =>
+            a.id === id ? { ...a, status: 'approved', approvedBy: 'Sếp Mavryk' } : a
+          ),
+          budget: {
+            ...prev.budget,
+            [adj.month]: mBudget
+          }
+        };
+      });
+
+      addLog(`Master phê duyệt điều chỉnh cost ${adj.id}`);
+      showToast('Đã phê duyệt điều chỉnh định mức cost', 'success');
+    },
+    [state.costAdjustments, addLog, showToast]
   );
 
   const addContract = useCallback(
@@ -623,6 +1125,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         checkTransaction,
         returnTransaction,
         approveTransaction,
+        forwardTransaction,
+        postTransaction,
+        rejectTransaction,
+        simulateWebhook,
+        matchWebhook,
+        submitProposal,
+        reviewProposal,
+        addProposalThread,
+        addCostAdjustment,
+        approveCostAdjustment,
         addContract,
         approveDiscount,
         addGiftMovement,

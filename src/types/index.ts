@@ -1,8 +1,10 @@
-export type Role = 'tien' | 'vpm' | 'giau';
+export type Role = 'operator' | 'admin' | 'master' | 'tien' | 'vpm' | 'giau';
 
 export type ActiveTab = 
   | 'overview' 
   | 'ledger' 
+  | 'proposals'
+  | 'budget'
   | 'debt' 
   | 'gifts' 
   | 'payroll' 
@@ -36,6 +38,43 @@ export interface BankWebhookLog {
   matchedTxId?: string;
   status: 'unmatched' | 'matched' | 'auto_matched';
   rawPayload?: any;
+}
+
+export interface ProposalThread {
+  id: string;
+  sender: string;
+  role: Role;
+  content: string;
+  createdAt: string;
+  isInboundReply?: boolean;
+}
+
+export interface Proposal {
+  id: string;
+  code: string;
+  title: string;
+  creator: string;
+  creatorEmail: string;
+  department: string;
+  amount: number;
+  date: string;
+  description: string;
+  status: 'draft' | 'pending_admin' | 'pending_master' | 'approved' | 'rejected';
+  resendSentAt?: string;
+  ccEmails?: string[];
+  threads: ProposalThread[];
+}
+
+export interface CostAdjustment {
+  id: string;
+  month: string;
+  category: string;
+  oldBudget: number;
+  newBudget: number;
+  reason: string;
+  approvedBy?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
 }
 
 
@@ -173,6 +212,9 @@ export interface AppState {
   holidays: string[];
   att: Record<string, AttendanceRecord>;
   budget: Record<string, BudgetMap>;
+  costAdjustments: CostAdjustment[];
+  webhooks: BankWebhookLog[];
+  proposals: Proposal[];
   locks: Record<string, string>;
   close: Record<string, MonthClosing>;
   log: AuditLog[];

@@ -5,6 +5,8 @@ import { TopHeader } from './components/layout/TopHeader';
 import { Toast } from './components/common/Toast';
 import { OverviewView } from './features/overview/OverviewView';
 import { LedgerView } from './features/ledger/LedgerView';
+import { ProposalsView } from './features/proposals/ProposalsView';
+import { BudgetControlView } from './features/budget/BudgetControlView';
 import { DebtView } from './features/debt/DebtView';
 import { GiftsView } from './features/gifts/GiftsView';
 import { PayrollView } from './features/payroll/PayrollView';
@@ -22,6 +24,8 @@ const MainWorkstation: React.FC = () => {
         
         {ui.view === 'overview' && <OverviewView />}
         {ui.view === 'ledger' && <LedgerView />}
+        {ui.view === 'proposals' && <ProposalsView />}
+        {ui.view === 'budget' && <BudgetControlView />}
         {ui.view === 'debt' && <DebtView />}
         {ui.view === 'gifts' && <GiftsView />}
         {ui.view === 'payroll' && <PayrollView />}
