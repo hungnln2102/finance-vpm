@@ -92,7 +92,24 @@
 
 ---
 
-## 🏛️ Giai đoạn 7: Triển khai Hệ Thống Web Hoàn Thiện Theo Master Blueprint V2 & Upgrade Spec
+## ⚡ Giai đoạn 8: Lưu Kép Song Song (PostgreSQL 16 + Google Sheet Headless Webhook)
+- [x] Bước 30: Xây dựng Backend Node.js & Database PostgreSQL 16 (Local):
+  - [x] Tạo Schema `finance_vpm` độc lập với 10 bảng dữ liệu (`transactions`, `contracts`, `staff`, `gift_items`, `gift_movements`, `proposals`, `cost_adjustments`, `app_metadata`, `monthly_balances`).
+  - [x] Nạp toàn bộ 216 giao dịch gốc, 18 hợp đồng, 5 nhân sự vào PostgreSQL.
+  - [x] Tính toán và lưu snapshot số dư các kỳ kế toán liên tiếp (T8, T9, T10/2026).
+- [x] Bước 31: Tách Tab Theo Dõi Số Dư Đầu Kỳ & Cuối Kỳ Theo Tháng:
+  - [x] Xóa bỏ dòng số dư đầu kỳ chen ngang trong Sổ Giao Dịch Gốc.
+  - [x] Tạo sub-tab `BalanceTrackingTab` hiển thị bảng ma trận số dư 2 tầng header, thẻ KPI và trạng thái chốt kỳ.
+- [x] Bước 32: Khởi tạo Toàn Bộ 9 Tab Cơ Sở Dữ Liệu trên Google Sheet:
+  - [x] Nâng cấp [gas/api.gs](file:///d:/Desktop/admin/finance-vpm/gas/api.gs) với hàm `initAllDatabaseSheets()`: Tạo trọn vẹn 9 tab (`00_SODU_KY`, `01_SOGOC_2026`, `02_HOPDONG_2026`, `03_QUATANG`, `04_CHAMCONG_2026`, `05_NHANSU`, `06_NGANSACH_2026`, `07_DEXUAT_KEHOACH`, `08_DANHMUC_CHUNG`).
+  - [x] Điền sẵn toàn bộ 216 giao dịch, 18 hợp đồng, nhân sự, chấm công, ngân sách và format tiền tệ VND tự động.
+  - [x] Thiết lập cơ chế tự động tạo tab mới khi có bảng mới từ PostgreSQL backend.
+- [x] Bước 33: Xây Dựng Hệ Thống Đồng Bộ Chéo Hai Chiều (Bi-directional Cross-Sync: Sheet <=> PostgreSQL):
+  - [x] Thêm action `exportAllData` trong Apps Script Webhook.
+  - [x] Viết hàm `importSheetDataToPostgres()` chuẩn ACID Transaction (Upsert giao dịch, hợp đồng và tự động tính toán lại số dư các tháng).
+  - [x] Mở 2 REST API endpoints `POST /api/sync/sheet-to-db` và `POST /api/sync/db-to-sheet`.
+  - [x] Tích hợp cụm 2 nút bấm điều khiển trực quan `📥 Đồng bộ Sheet → DB` và `📤 Đồng bộ DB → Sheet` trên giao diện Web kèm Toast thông báo và tự động refresh state.
+
 - [/] Bước 28: Tái cấu trúc State Schema & Type Definitions:
   - [ ] 28.1: Nâng cấp [`src/types/index.ts`](file:///d:/Desktop/admin/finance-vpm/src/types/index.ts): Định nghĩa 3 ngạch chuẩn (`operator`, `admin`, `master`), vòng đời 5 trạng thái (`draft`, `pending_admin`, `pending_master`, `posted`, `rejected`), cấu trúc `BankWebhookLog`, `Proposal`, `ProposalThread`, `CostAdjustment`.
   - [ ] 28.2: Nâng cấp [`src/data/constants.ts`](file:///d:/Desktop/admin/finance-vpm/src/data/constants.ts): Cập nhật `ROLE_DEFINITIONS` và danh mục phân ngạch mới.
@@ -107,3 +124,6 @@
 - [ ] Bước 31: Kiểm thử toàn diện & Đưa vào vận hành:
   - [ ] 31.1: Biên dịch TypeScript (`npm run build`) đạt 0 error, 0 warning.
   - [ ] 31.2: Chạy Dev Server và kiểm thử toàn bộ luồng nghiệp vụ.
+
+
+- [x] Khac phuc HMR va co lap loi dong bo Google Sheet (2026-11-11): tach hook useApp khoi AppContext.tsx, build dat; webhook production con can deploy phien ban GAS moi vi exportAllData dang tra unknown_action.

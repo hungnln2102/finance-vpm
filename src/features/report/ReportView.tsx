@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApp } from '../../context/AppContext';
+import { useApp } from './../../context/useApp';
 import { CATS, TYPES, ACC } from '../../data/constants';
 import { fmt, fm, mil, monthLabel, lastDay, prevMonth } from '../../utils/formatters';
 import { opexBy, monthTx, calculateBalance } from '../../services/financeService';

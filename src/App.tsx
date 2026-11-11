@@ -1,5 +1,6 @@
 import React from 'react';
-import { AppProvider, useApp } from './context/AppContext';
+import { AppProvider } from './context/AppContext';
+import { useApp } from './context/useApp';
 import { RailNav } from './components/layout/RailNav';
 import { TopHeader } from './components/layout/TopHeader';
 import { Toast } from './components/common/Toast';

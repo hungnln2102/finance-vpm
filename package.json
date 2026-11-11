@@ -4,14 +4,21 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "server": "node server/index.mjs",
+    "dev:frontend": "vite",
+    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"node server/index.mjs\" \"vite\"",
     "build": "tsc && vite build",
     "build:gas": "tsc && vite build && node scripts/build-gas.js && npx tsx scripts/generate-gas-code.js && powershell -Command \"Copy-Item -Force gas/Code.js gas/Code.gs\"",
     "preview": "vite preview"
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "concurrently": "^10.0.7",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
     "lucide-react": "^1.16.0",
+    "pg": "^8.23.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

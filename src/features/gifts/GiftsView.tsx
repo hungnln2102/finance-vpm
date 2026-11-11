@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApp } from '../../context/AppContext';
+import { useApp } from './../../context/useApp';
 import { GiftItem } from '../../types';
 import { fmt, mil, dmy, fm } from '../../utils/formatters';
 import { calculateGiftStock } from '../../services/inventoryService';

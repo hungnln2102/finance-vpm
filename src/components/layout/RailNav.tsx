@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { useApp } from '../../context/AppContext';
+import React, { useState, useEffect } from 'react';
+import { useApp } from './../../context/useApp';
+import { apiClient } from '../../services/apiClient';
 import { ActiveTab } from '../../types';
 import { 
   LayoutDashboard, 
@@ -25,6 +26,26 @@ interface NavItemConfig {
 export const RailNav: React.FC = () => {
   const { state, ui, setView, resetData } = useApp();
   const [resetArmed, setResetArmed] = useState(false);
+  const [dbStatus, setDbStatus] = useState<{ connected: boolean; info: string }>({
+    connected: false,
+    info: 'Đang kiểm tra kết nối...'
+  });
+
+  useEffect(() => {
+    apiClient.checkHealth().then((res) => {
+      if (res && res.status === 'ok') {
+        setDbStatus({
+          connected: true,
+          info: 'PostgreSQL 16 (finance_vpm)'
+        });
+      } else {
+        setDbStatus({
+          connected: false,
+          info: 'Cục bộ (LocalStorage fallback)'
+        });
+      }
+    });
+  }, []);
 
   const navItems: NavItemConfig[] = [
     { id: 'overview', label: 'Tổng quan', icon: <LayoutDashboard size={18} /> },
@@ -94,7 +115,11 @@ export const RailNav: React.FC = () => {
       </nav>
 
       <div className="rail-footer">
-        <span>Bản demo React + TS dựng từ 8 file khách gửi ngày 16/10/2026. Dữ liệu lưu cục bộ trên trình duyệt.</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', fontSize: '11px', color: dbStatus.connected ? 'var(--good)' : 'var(--muted)' }}>
+          <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', backgroundColor: dbStatus.connected ? 'var(--good)' : 'var(--warn)' }}></span>
+          <span style={{ fontWeight: 600 }}>{dbStatus.info}</span>
+        </div>
+        <span>Lưu trữ song song: PostgreSQL & Google Sheet.</span>
         <button
           type="button"
           className="rail-footer-reset"

@@ -230,10 +230,12 @@ export interface UIState {
   role: Role;
   month: string; // YYYY-MM
   sel?: string | null;
-  ledgerFilter: 'all' | 'pending' | 'approve' | 'flag';
+  ledgerFilter: 'all' | 'in' | 'out' | 'pending' | 'approve' | 'flag';
   debtKind: ContractKind;
   debtOnlyOver: boolean;
   editTx: string | null;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export interface IssueItem {

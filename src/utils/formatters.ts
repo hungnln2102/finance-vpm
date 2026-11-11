@@ -57,3 +57,56 @@ export const prevMonth = (m: string): string => {
   const [y, mm] = m.split("-").map(Number);
   return mm === 1 ? (y - 1) + "-12" : y + "-" + String(mm - 1).padStart(2, "0");
 };
+
+/**
+ * Lấy ngày hôm nay theo thời gian thực (Realtime Today) dạng YYYY-MM-DD
+ */
+export const getRealToday = (): string => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+/**
+ * Lấy tháng hiện tại theo thời gian thực (Realtime Current Month) dạng YYYY-MM
+ */
+export const getRealCurrentMonth = (): string => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+};
+
+/**
+ * Tạo danh sách các tháng linh hoạt từ quá khứ đến hiện tại và tương lai
+ */
+export const generateAvailableMonths = (
+  startMonth = '2026-08',
+  extraMonths = 3,
+  existingMonths: string[] = []
+): string[] => {
+  const current = getRealCurrentMonth();
+  const set = new Set<string>(['2026-08', '2026-09', '2026-10', current]);
+
+  // Thêm các tháng đã phát sinh từ database
+  existingMonths.forEach((m) => {
+    if (m && m.length === 7) set.add(m);
+  });
+
+  // Tự động sinh các tháng từ startMonth đến current + extraMonths
+  const [currY, currM] = current.split('-').map(Number);
+  for (let i = 0; i <= extraMonths; i++) {
+    let m = currM + i;
+    let y = currY;
+    while (m > 12) {
+      m -= 12;
+      y += 1;
+    }
+    set.add(`${y}-${String(m).padStart(2, '0')}`);
+  }
+
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+};
+

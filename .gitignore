@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Build output and generated frontend caches
+dist/
+.vite/
+*.tsbuildinfo
+
+# Runtime output
+*.log
+logs/
+coverage/
+
+# Local tooling and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Temporary and backup files
+*.tmp
+*.temp
+*.bak
+*~

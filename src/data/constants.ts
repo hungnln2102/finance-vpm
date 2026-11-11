@@ -1,6 +1,7 @@
 import { Role, RoleDefinition, OpexCategoryMap, TransactionTypeMap, AccountMap } from '../types';
+import { getRealToday } from '../utils/formatters';
 
-export const TODAY = "2026-10-16";
+export const TODAY = getRealToday();
 export const OPEN_DATE = "2026-08-01";
 export const KEY = "sogoc-bkd-v1";
 

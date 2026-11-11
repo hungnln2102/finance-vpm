@@ -1,27 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../../context/AppContext';
-import { Transaction, TransactionType } from '../../types';
-import { ACC, TYPES, CATS, APPROVE_LIMIT, TODAY } from '../../data/constants';
+import { useApp } from './../../context/useApp';
+import { Transaction } from '../../types';
+import { TYPES, CATS } from '../../data/constants';
 import { fmt, mil, dmy, fm, mon, lastDay, monthLabel, prevMonth } from '../../utils/formatters';
-import { txIssues, needsApproval, calculateBalance } from '../../services/financeService';
+import { txIssues, calculateBalance } from '../../services/financeService';
+import { TransactionModal } from './components/TransactionModal';
+import { LedgerKpiCards } from './components/LedgerKpiCards';
+import { BalanceTrackingTab } from './components/BalanceTrackingTab';
 import { 
-  Filter, 
   PlusCircle, 
-  Check, 
-  CornerUpLeft, 
-  CheckCircle, 
   Edit3, 
   AlertCircle, 
   FileText,
   Lock,
-  Zap,
-  Link2,
-  ShieldCheck,
-  XCircle,
-  ArrowRight,
-  Clock,
-  Sparkles,
-  RefreshCw
+  Landmark
 } from 'lucide-react';
 
 export const LedgerView: React.FC = () => {
@@ -30,289 +22,79 @@ export const LedgerView: React.FC = () => {
     ui, 
     canDo, 
     setLedgerFilter, 
-    setEditTx, 
-    addTransaction, 
-    updateTransaction,
-    checkTransaction, 
-    returnTransaction, 
-    approveTransaction,
-    forwardTransaction,
-    postTransaction,
-    rejectTransaction,
-    simulateWebhook,
-    matchWebhook
+    setEditTx
   } = useApp();
 
   const m = ui.month;
   const f = ui.ledgerFilter;
   const locked = !!state.locks[m];
-  const [showWebhookDrawer, setShowWebhookDrawer] = useState(false);
-  const [selectedTxForMatch, setSelectedTxForMatch] = useState<string>('');
+  const [subTab, setSubTab] = useState<'transactions' | 'balances'>('transactions');
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [pageSize, setPageSize] = useState<number>(20);
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
-  // Filtering transactions
-  let rows = state.tx.filter((t) => mon(t.date) === m);
-  if (f === 'pending') {
-    rows = state.tx.filter((t) => t.status === 'draft' || t.status === 'pending_admin' || t.status === 'pending');
-  } else if (f === 'approve') {
-    rows = state.tx.filter((t) => t.status === 'pending_master' || (t.status === 'checked' && needsApproval(t)));
-  } else if (f === 'flag') {
-    rows = rows.filter((t) => txIssues(t).length > 0);
+  // 1. Filtering transactions by month or date range
+  const baseRows = state.tx.filter((t) => {
+    if (ui.dateFrom && t.date < ui.dateFrom) return false;
+    if (ui.dateTo && t.date > ui.dateTo) return false;
+    if (!ui.dateFrom && !ui.dateTo) {
+      return mon(t.date) === m;
+    }
+    return true;
+  });
+
+  // 2. Filter by All / In / Out
+  let rows = baseRows;
+  if (f === 'in') {
+    rows = baseRows.filter((t) => t.dir === 'in');
+  } else if (f === 'out') {
+    rows = baseRows.filter((t) => t.dir === 'out');
   }
+
+  // Counts & Totals for KPI cards & Tabs
+  const countAll = baseRows.length;
+  const countIn = baseRows.filter((t) => t.dir === 'in').length;
+  const countOut = baseRows.filter((t) => t.dir === 'out').length;
+
+  const totalIn = baseRows.filter((t) => t.dir === 'in').reduce((s, t) => s + t.amt, 0);
+  const totalOut = baseRows.filter((t) => t.dir === 'out').reduce((s, t) => s + t.amt, 0);
 
   const prevM = prevMonth(m);
   const openingQuy = calculateBalance(state.tx, 'QUY', lastDay(prevM));
   const openingAcb = calculateBalance(state.tx, 'ACB', lastDay(prevM));
 
-  const totalIn = rows.filter((t) => t.dir === 'in').reduce((s, t) => s + t.amt, 0);
-  const totalOut = rows.filter((t) => t.dir === 'out').reduce((s, t) => s + t.amt, 0);
+  const currentQuyBal = calculateBalance(state.tx, 'QUY', ui.dateTo || lastDay(m));
+  const currentAcbBal = calculateBalance(state.tx, 'ACB', ui.dateTo || lastDay(m));
+  const totalFund = currentQuyBal + currentAcbBal;
 
-  // Form State
-  const editingTx = ui.editTx ? state.tx.find((t) => t.id === ui.editTx) : null;
-
-  const [date, setDate] = useState(m === mon(TODAY) ? TODAY : `${m}-01`);
-  const [acc, setAcc] = useState('QUY');
-  const [type, setType] = useState<TransactionType>('OPEX');
-  const [amt, setAmt] = useState<number | ''>('');
-  const [cat, setCat] = useState('');
-  const [contract, setContract] = useState('');
-  const [desc, setDesc] = useState('');
-  const [docFile, setDocFile] = useState<File | null>(null);
-
+  // Pagination logic
   useEffect(() => {
-    if (editingTx) {
-      setDate(editingTx.date);
-      setAcc(editingTx.acc);
-      setType(editingTx.type);
-      setAmt(editingTx.amt);
-      setCat(editingTx.cat || '');
-      setContract(editingTx.contract || '');
-      setDesc(editingTx.desc);
-    } else {
-      setDate(m === mon(TODAY) ? TODAY : `${m}-01`);
-      setAmt('');
-      setCat('');
-      setContract('');
-      setDesc('');
-      setDocFile(null);
-    }
-  }, [editingTx, m]);
+    setCurrentPage(1);
+  }, [f, m, ui.dateFrom, ui.dateTo, pageSize]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!amt || Number(amt) <= 0) return;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const pagedRows = rows.slice(startIndex, startIndex + pageSize);
 
-    if (editingTx) {
-      updateTransaction(editingTx.id, {
-        date,
-        acc,
-        type,
-        dir: TYPES[type].dir,
-        amt: Number(amt),
-        cat: type === 'OPEX' ? cat : '',
-        contract,
-        desc: desc.trim()
-      });
-      setEditTx(null);
-    } else {
-      addTransaction({
-        date,
-        acc,
-        type,
-        amt: Number(amt),
-        cat: type === 'OPEX' ? cat : '',
-        contract,
-        desc: desc.trim(),
-        docFile
-      });
-      setAmt('');
-      setDesc('');
-      setCat('');
-      setContract('');
-      setDocFile(null);
+  const getPaginationRange = (curr: number, total: number) => {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
     }
+    if (curr <= 4) {
+      return [1, 2, 3, 4, 5, '...', total];
+    }
+    if (curr >= total - 3) {
+      return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+    }
+    return [1, '...', curr - 1, curr, curr + 1, '...', total];
   };
 
-  const renderStatusChip = (t: Transaction) => {
-    if (t.status === 'migrated') {
-      return <span className="chip">Từ file cũ</span>;
-    }
-
-    if (t.status === 'rejected' || t.status === 'returned') {
-      return (
-        <span className="chip bad" title={t.note || 'Từ chối / Yêu cầu sửa'}>
-          <XCircle size={11} style={{ marginRight: '3px' }} />
-          Từ chối: {t.note || 'Thiếu chứng từ'}
-        </span>
-      );
-    }
-
-    if (t.status === 'posted' || t.status === 'approved') {
-      return (
-        <span className="chip good" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}>
-          <ShieldCheck size={12} />
-          <span>Sổ Cái (Posted)</span>
-        </span>
-      );
-    }
-
-    if (t.status === 'draft') {
-      return (
-        <span className="chip" style={{ background: 'rgba(148, 163, 184, 0.2)', color: '#94a3b8' }}>
-          <Clock size={11} style={{ marginRight: '3px' }} />
-          Bản nháp
-        </span>
-      );
-    }
-
-    if (t.status === 'pending_admin' || t.status === 'pending') {
-      return (
-        <span className="chip warn" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-          <Clock size={11} />
-          <span>Chờ Admin</span>
-        </span>
-      );
-    }
-
-    if (t.status === 'pending_master' || t.status === 'checked') {
-      return (
-        <span className="chip" style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', display: 'inline-flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}>
-          <Sparkles size={11} />
-          <span>Chờ Master</span>
-        </span>
-      );
-    }
-
-    return <span className="chip">{t.status}</span>;
-  };
+  // Editing transaction
+  const editingTx = ui.editTx ? state.tx.find((t) => t.id === ui.editTx) : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-      {/* Form Section */}
-      {canDo('add') && !locked && f === 'all' && (
-        <section className="card-box" style={{ borderLeft: '4px solid var(--teal)' }}>
-          <h2 className="card-title">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <PlusCircle size={18} style={{ color: 'var(--teal)' }} />
-              <span>{editingTx ? `Sửa phân loại giao dịch ${editingTx.id}` : 'Nhập giao dịch mới'}</span>
-            </div>
-            <small>{editingTx ? 'chỉ VPM được sửa' : `chi từ ${fmt(APPROVE_LIMIT)} đ sẽ cần chị Giàu duyệt`}</small>
-          </h2>
-
-          <form onSubmit={handleSubmit} className="form-grid">
-            <div className="form-group">
-              <label>Ngày giao dịch</label>
-              <input
-                type="date"
-                required
-                value={date}
-                min={`${m}-01`}
-                max={lastDay(m)}
-                onChange={(e) => setDate(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Tài khoản</label>
-              <select value={acc} onChange={(e) => setAcc(e.target.value)}>
-                {Object.entries(ACC)
-                  .filter(([k]) => k !== 'BT')
-                  .map(([k, name]) => (
-                    <option key={k} value={k}>{name}</option>
-                  ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Loại tiền</label>
-              <select
-                value={type}
-                onChange={(e) => {
-                  const val = e.target.value as TransactionType;
-                  setType(val);
-                  if (val !== 'OPEX') setCat('');
-                }}
-              >
-                {Object.entries(TYPES).map(([k, t]) => (
-                  <option key={k} value={k}>
-                    {t.dir === 'in' ? 'Thu · ' : 'Chi · '}{t.l}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Số tiền (đ)</label>
-              <input
-                type="number"
-                min="1000"
-                step="1000"
-                required
-                placeholder="vd 1500000"
-                value={amt}
-                onChange={(e) => setAmt(e.target.value === '' ? '' : Number(e.target.value))}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Nhóm chi phí</label>
-              <select
-                value={cat}
-                disabled={type !== 'OPEX'}
-                onChange={(e) => setCat(e.target.value)}
-              >
-                <option value="">—</option>
-                {Object.entries(CATS).map(([k, label]) => (
-                  <option key={k} value={k}>{label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Hợp đồng liên kết</label>
-              <select value={contract} onChange={(e) => setContract(e.target.value)}>
-                <option value="">—</option>
-                {state.contracts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.id} · {c.customer} ({c.kind})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group wide">
-              <label>Diễn giải</label>
-              <input
-                type="text"
-                required
-                placeholder="vd Ship quà sinh nhật khách Liên"
-                value={desc}
-                onChange={(e) => setDesc(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Chứng từ đính kèm</label>
-              <input
-                type="file"
-                accept="image/*,.pdf"
-                onChange={(e) => setDocFile(e.target.files?.[0] || null)}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-              <button type="submit" className="btn primary">
-                {editingTx ? 'Lưu phân loại' : 'Ghi vào sổ'}
-              </button>
-              {editingTx && (
-                <button type="button" className="btn" onClick={() => setEditTx(null)}>
-                  Hủy
-                </button>
-              )}
-            </div>
-          </form>
-        </section>
-      )}
-
       {locked && (
         <div style={{ padding: '12px 16px', background: 'var(--ochre-soft)', color: 'var(--ochre)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
           <Lock size={16} />
@@ -320,140 +102,82 @@ export const LedgerView: React.FC = () => {
         </div>
       )}
 
-      {/* Webhook ACB Matching Panel */}
-      <section className="card-box" style={{ borderLeft: '4px solid #f97316', background: 'rgba(249, 115, 22, 0.03)' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-          <div>
-            <h2 className="card-title" style={{ color: '#f97316' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Zap size={18} />
-                <span>Đối Soát Biến Động Số Dư ACB (Bank Webhook Engine)</span>
-                <span className="chip" style={{ background: 'rgba(249, 115, 22, 0.15)', color: '#f97316', fontWeight: 600 }}>
-                  {state.webhooks ? state.webhooks.length : 0} logs
-                </span>
-              </div>
-              <small>Tự động ghi nhận biến động số dư ngân hàng ACB thời gian thực & 1-click Auto-Match với chứng từ sổ gốc</small>
-            </h2>
-          </div>
+      {/* Sub-tab chuyển đổi giữa Sổ Chi Tiết & Bảng Số Dư Đầu Kỳ - Cuối Kỳ */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--line)', paddingBottom: '12px' }}>
+        <button
+          type="button"
+          onClick={() => setSubTab('transactions')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 18px',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: '13px',
+            fontWeight: subTab === 'transactions' ? 600 : 500,
+            background: subTab === 'transactions' ? 'var(--teal-soft)' : 'transparent',
+            color: subTab === 'transactions' ? 'var(--teal)' : 'var(--muted)',
+            border: subTab === 'transactions' ? '1px solid var(--teal)' : '1px solid transparent',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <FileText size={15} />
+          <span>Sổ Giao Dịch Chi Tiết ({countAll})</span>
+        </button>
 
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              type="button"
-              className="btn xs"
-              onClick={() => simulateWebhook()}
-              style={{ background: '#f97316', color: '#fff', display: 'flex', alignItems: 'center', gap: '5px' }}
-            >
-              <Zap size={12} />
-              <span>Simulate Webhook</span>
-            </button>
-            <button
-              type="button"
-              className="btn xs"
-              onClick={() => setShowWebhookDrawer(!showWebhookDrawer)}
-            >
-              {showWebhookDrawer ? 'Thu gọn panel' : 'Mở danh sách Webhook'}
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => setSubTab('balances')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 18px',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: '13px',
+            fontWeight: subTab === 'balances' ? 600 : 500,
+            background: subTab === 'balances' ? 'var(--teal-soft)' : 'transparent',
+            color: subTab === 'balances' ? 'var(--teal)' : 'var(--muted)',
+            border: subTab === 'balances' ? '1px solid var(--teal)' : '1px solid transparent',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <Landmark size={15} />
+          <span>Theo Dõi Số Dư Đầu Kỳ & Cuối Kỳ</span>
+        </button>
+      </div>
 
-        {showWebhookDrawer && (
-          <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
-            <div className="table-scroll">
-              <table style={{ fontSize: '12.5px' }}>
-                <thead>
-                  <tr>
-                    <th>Thời gian</th>
-                    <th>Mã Webhook</th>
-                    <th>Biến động</th>
-                    <th>Nội dung chuyển khoản</th>
-                    <th>Trạng thái khớp</th>
-                    <th>Chứng từ đối soát</th>
-                    <th style={{ textAlign: 'right' }}>Hành động</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(state.webhooks || []).map((w) => (
-                    <tr key={w.id}>
-                      <td style={{ fontFamily: 'var(--f-num)', whiteSpace: 'nowrap' }}>{dmy(w.date)}</td>
-                      <td style={{ fontFamily: 'var(--f-num)', fontWeight: 600, color: '#f97316' }}>{w.bankTxId}</td>
-                      <td className="num" style={{ color: w.dir === 'in' ? 'var(--good)' : 'var(--bad)', fontWeight: 700 }}>
-                        {w.dir === 'in' ? '+' : '-'}{fmt(w.amount)} đ
-                      </td>
-                      <td style={{ maxWidth: '280px' }}>{w.description}</td>
-                      <td>
-                        {w.status === 'auto_matched' && (
-                          <span className="chip good" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                            <CheckCircle size={11} /> Auto-Match
-                          </span>
-                        )}
-                        {w.status === 'matched' && (
-                          <span className="chip good" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                            <Link2 size={11} /> Đã khớp
-                          </span>
-                        )}
-                        {w.status === 'unmatched' && (
-                          <span className="chip warn" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                            <Clock size={11} /> Chưa khớp
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ fontFamily: 'var(--f-num)', fontWeight: 600 }}>
-                        {w.matchedTxId ? (
-                          <span style={{ color: 'var(--teal)' }}>{w.matchedTxId}</span>
-                        ) : (
-                          <select
-                            style={{ fontSize: '11.5px', padding: '2px 6px' }}
-                            value={selectedTxForMatch}
-                            onChange={(e) => setSelectedTxForMatch(e.target.value)}
-                          >
-                            <option value="">-- Chọn chứng từ ghép --</option>
-                            {state.tx
-                              .filter((t) => t.dir === w.dir && t.status !== 'posted')
-                              .slice(0, 10)
-                              .map((txItem) => (
-                                <option key={txItem.id} value={txItem.id}>
-                                  {txItem.id} · {txItem.desc.slice(0, 25)} ({fmt(txItem.amt)} đ)
-                                </option>
-                              ))}
-                          </select>
-                        )}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        {w.status === 'unmatched' && selectedTxForMatch && (
-                          <button
-                            type="button"
-                            className="btn xs primary"
-                            onClick={() => {
-                              matchWebhook(w.id, selectedTxForMatch);
-                              setSelectedTxForMatch('');
-                            }}
-                          >
-                            <Link2 size={11} /> Khớp
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </section>
+      {subTab === 'balances' ? (
+        <BalanceTrackingTab />
+      ) : (
+        <>
+          {/* 1. Bốn thẻ biểu thị dữ liệu tổng hợp */}
+          <LedgerKpiCards
+        totalFund={totalFund}
+        quyBal={currentQuyBal}
+        acbBal={currentAcbBal}
+        totalIn={totalIn}
+        countIn={countIn}
+        totalOut={totalOut}
+        countOut={countOut}
+        totalCount={baseRows.length}
+      />
 
-      {/* Main Table Card */}
+      {/* 2. Main Table Card */}
       <section className="card-box">
         {/* Controls and Filter Tabs */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <h2 className="card-title">
               <span>
-                {f === 'pending'
-                  ? 'Giao dịch chờ Admin xem xét'
-                  : f === 'approve'
-                  ? 'Giao dịch chờ Master phê duyệt (Sổ cái)'
-                  : f === 'flag'
-                  ? `Dòng có cảnh báo · ${monthLabel(m)}`
+                {f === 'in'
+                  ? 'Giao dịch thu tiền'
+                  : f === 'out'
+                  ? 'Giao dịch chi tiền'
+                  : ui.dateFrom || ui.dateTo
+                  ? `Sổ Giao Dịch (${dmy(ui.dateFrom || `${m}-01`)} — ${dmy(ui.dateTo || lastDay(m))})`
                   : `Sổ Giao Dịch Gốc · ${monthLabel(m)}`}
               </span>
               <small>
@@ -462,35 +186,50 @@ export const LedgerView: React.FC = () => {
             </h2>
           </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            <button
-              type="button"
-              className={`btn xs ${f === 'all' ? 'primary' : ''}`}
-              onClick={() => setLedgerFilter('all')}
-            >
-              Tất cả ({state.tx.filter((t) => mon(t.date) === m).length})
-            </button>
-            <button
-              type="button"
-              className={`btn xs ${f === 'pending' ? 'primary' : ''}`}
-              onClick={() => setLedgerFilter('pending')}
-            >
-              Chờ Admin ({state.tx.filter((t) => t.status === 'draft' || t.status === 'pending_admin' || t.status === 'pending').length})
-            </button>
-            <button
-              type="button"
-              className={`btn xs ${f === 'approve' ? 'primary' : ''}`}
-              onClick={() => setLedgerFilter('approve')}
-            >
-              Chờ Master ({state.tx.filter((t) => t.status === 'pending_master' || (t.status === 'checked' && needsApproval(t))).length})
-            </button>
-            <button
-              type="button"
-              className={`btn xs ${f === 'flag' ? 'primary' : ''}`}
-              onClick={() => setLedgerFilter('flag')}
-            >
-              Có cảnh báo ({state.tx.filter((t) => mon(t.date) === m && txIssues(t).length > 0).length})
-            </button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              <button
+                type="button"
+                className={`btn xs ${f === 'all' || !['in', 'out'].includes(f) ? 'primary' : ''}`}
+                onClick={() => setLedgerFilter('all')}
+              >
+                Tất cả ({countAll})
+              </button>
+              <button
+                type="button"
+                className={`btn xs ${f === 'in' ? 'primary' : ''}`}
+                onClick={() => setLedgerFilter('in')}
+              >
+                Thu ({countIn})
+              </button>
+              <button
+                type="button"
+                className={`btn xs ${f === 'out' ? 'primary' : ''}`}
+                onClick={() => setLedgerFilter('out')}
+              >
+                Chi ({countOut})
+              </button>
+            </div>
+
+            {canDo('add') && (
+              <button
+                type="button"
+                className="btn primary xs"
+                onClick={() => setIsCreateModalOpen(true)}
+                disabled={locked}
+                title={locked ? `${monthLabel(m)} đã khóa sổ` : 'Nhập giao dịch mới'}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 600,
+                  padding: '5px 12px'
+                }}
+              >
+                <PlusCircle size={14} />
+                <span>Giao dịch mới</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -506,22 +245,11 @@ export const LedgerView: React.FC = () => {
                 <th>Phân loại</th>
                 <th className="num">Thu</th>
                 <th className="num">Chi</th>
-                <th>Trạng thái</th>
-                <th style={{ textAlign: 'right' }}>Thao tác phê duyệt</th>
+                <th style={{ textAlign: 'right' }}>Thao tác</th>
               </tr>
             </thead>
             <tbody>
-              {f === 'all' && (
-                <tr style={{ background: 'var(--soft)', fontWeight: 600 }}>
-                  <td colSpan={5}>Số dư đầu kỳ {monthLabel(m)}</td>
-                  <td colSpan={2} className="num">
-                    Quỹ: {fm(openingQuy)} · ACB: {fm(openingAcb)}
-                  </td>
-                  <td colSpan={2} />
-                </tr>
-              )}
-
-              {rows.map((t) => {
+              {pagedRows.map((t) => {
                 const issues = txIssues(t);
 
                 return (
@@ -565,84 +293,18 @@ export const LedgerView: React.FC = () => {
                     <td className="num" style={{ color: t.dir === 'out' ? 'var(--bad)' : undefined, fontWeight: t.dir === 'out' ? 600 : 400 }}>
                       {t.dir === 'out' ? fmt(t.amt) : ''}
                     </td>
-                    <td>{renderStatusChip(t)}</td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', gap: '4px' }}>
-                        {/* 1. Nút cho Operator gửi duyệt Admin nếu là bản nháp */}
-                        {t.status === 'draft' && (
-                          <button
-                            type="button"
-                            className="btn xs primary"
-                            onClick={() => updateTransaction(t.id, { status: 'pending_admin' })}
-                            title="Gửi chứng từ lên Admin xem xét"
-                          >
-                            <ArrowRight size={12} />
-                            <span>Gửi Admin</span>
-                          </button>
-                        )}
-
-                        {/* 2. Nút cho Admin xem xét & sơ duyệt */}
-                        {(canDo('forward') || canDo('check')) && (t.status === 'pending_admin' || t.status === 'pending') && (
-                          <>
-                            <button
-                              type="button"
-                              className="btn xs primary"
-                              onClick={() => forwardTransaction(t.id)}
-                              title="Sơ duyệt đối chiếu hợp lệ, chuyển tiếp Master"
-                            >
-                              <Check size={12} />
-                              <span>Sơ duyệt</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="btn xs danger"
-                              onClick={() => returnTransaction(t.id, 'Yêu cầu kiểm tra lại chứng từ gốc')}
-                              title="Trả lại cho nhân viên làm lại"
-                            >
-                              <CornerUpLeft size={12} />
-                              <span>Trả lại</span>
-                            </button>
-                          </>
-                        )}
-
-                        {/* 3. Nút cho Master phê duyệt cuối cùng vào Sổ Cái */}
-                        {(canDo('post') || canDo('approve')) && (t.status === 'pending_master' || t.status === 'checked') && (
-                          <>
-                            <button
-                              type="button"
-                              className="btn xs primary"
-                              onClick={() => postTransaction(t.id)}
-                              style={{ background: 'var(--good)', borderColor: 'var(--good)' }}
-                              title="Master phê duyệt cuối cùng, ghi chính thức vào Sổ Cái"
-                            >
-                              <ShieldCheck size={12} />
-                              <span>Chốt Sổ Cái</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="btn xs danger"
-                              onClick={() => rejectTransaction(t.id, 'Master từ chối giao dịch')}
-                              title="Từ chối phê duyệt"
-                            >
-                              <XCircle size={12} />
-                              <span>Từ chối</span>
-                            </button>
-                          </>
-                        )}
-
-                        {/* Nút sửa phân loại chi phí */}
-                        {canDo('edit') && !locked && (
-                          <button
-                            type="button"
-                            className="btn xs"
-                            onClick={() => setEditTx(t.id)}
-                            title="Sửa phân loại hoặc thông tin"
-                          >
-                            <Edit3 size={12} />
-                            <span>Sửa</span>
-                          </button>
-                        )}
-                      </div>
+                      {canDo('edit') && !locked && (
+                        <button
+                          type="button"
+                          className="btn xs"
+                          onClick={() => setEditTx(t.id)}
+                          title="Sửa phân loại hoặc thông tin"
+                        >
+                          <Edit3 size={12} />
+                          <span>Sửa</span>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -650,7 +312,7 @@ export const LedgerView: React.FC = () => {
 
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '32px', color: 'var(--muted)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '32px', color: 'var(--muted)' }}>
                     Không có giao dịch nào phù hợp bộ lọc
                   </td>
                 </tr>
@@ -658,7 +320,92 @@ export const LedgerView: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Thanh phân trang ở cuối bảng */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderTop: '1px solid var(--line)', flexWrap: 'wrap', gap: '12px' }}>
+          {/* Bên trái: Chọn số dòng hiển thị */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12.5px', color: 'var(--muted)' }}>
+            <span>Hiển thị</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              style={{ padding: '3px 8px', fontSize: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)', background: 'var(--panel)', color: 'var(--ink)' }}
+            >
+              <option value={10}>10 dòng</option>
+              <option value={20}>20 dòng</option>
+              <option value={50}>50 dòng</option>
+              <option value={100}>100 dòng</option>
+            </select>
+            <span>
+              {rows.length > 0
+                ? `Hiển thị ${startIndex + 1} - ${Math.min(startIndex + pageSize, rows.length)} trên tổng số ${rows.length} giao dịch`
+                : '0 giao dịch'}
+            </span>
+          </div>
+
+          {/* Bên phải: Nút số trang 1, 2, 3 ... 7, 8, 9 ... N, N+1, N+2 */}
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                type="button"
+                className="btn xs"
+                disabled={safeCurrentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                style={{ padding: '4px 8px' }}
+              >
+                Trước
+              </button>
+
+              {getPaginationRange(safeCurrentPage, totalPages).map((p, idx) => {
+                if (typeof p === 'string') {
+                  return (
+                    <span key={`dots-${idx}`} style={{ padding: '0 4px', color: 'var(--muted)', fontSize: '12px' }}>
+                      ...
+                    </span>
+                  );
+                }
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    className={`btn xs ${p === safeCurrentPage ? 'primary' : ''}`}
+                    onClick={() => setCurrentPage(p)}
+                    style={{ minWidth: '28px', padding: '4px 6px', fontWeight: p === safeCurrentPage ? 700 : 500 }}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                className="btn xs"
+                disabled={safeCurrentPage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                style={{ padding: '4px 8px' }}
+              >
+                Sau
+              </button>
+            </div>
+          )}
+        </div>
       </section>
+      </>
+      )}
+
+      {/* Modal Nhập mới & Sửa giao dịch */}
+      <TransactionModal
+        isOpen={isCreateModalOpen || !!editingTx}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setEditTx(null);
+        }}
+        editingTx={editingTx}
+        currentMonth={m}
+      />
     </div>
   );
 };

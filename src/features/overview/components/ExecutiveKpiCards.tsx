@@ -1,5 +1,5 @@
 import React from 'react';
-import { useApp } from '../../../context/AppContext';
+import { useApp } from './../../../context/useApp';
 import { TODAY } from '../../../data/constants';
 import { fm, mil } from '../../../utils/formatters';
 import { calculateBalance, opexBy, monthTx } from '../../../services/financeService';
@@ -159,3 +159,4 @@ export const ExecutiveKpiCards: React.FC = () => {
     </div>
   );
 };
+

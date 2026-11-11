@@ -1,5 +1,5 @@
 import React from 'react';
-import { useApp } from '../../../context/AppContext';
+import { useApp } from './../../../context/useApp';
 import { TODAY, OLD } from '../../../data/constants';
 import { fm, fmt } from '../../../utils/formatters';
 import { calculateBalance, opexBy } from '../../../services/financeService';
@@ -90,3 +90,4 @@ export const LegacyAuditModal: React.FC<LegacyAuditModalProps> = ({ isOpen, onCl
     </div>
   );
 };
+

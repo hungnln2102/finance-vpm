@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApp } from '../../context/AppContext';
+import { useApp } from './../../context/useApp';
 import { Proposal } from '../../types';
 import { fmt, mil, dmy } from '../../utils/formatters';
 import { TODAY, ROLES } from '../../data/constants';

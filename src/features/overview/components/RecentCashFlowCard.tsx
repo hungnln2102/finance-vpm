@@ -1,5 +1,5 @@
 import React from 'react';
-import { useApp } from '../../../context/AppContext';
+import { useApp } from './../../../context/useApp';
 import { ACC, TYPES } from '../../../data/constants';
 import { fm, dmy } from '../../../utils/formatters';
 import { monthTx } from '../../../services/financeService';
@@ -100,3 +100,4 @@ export const RecentCashFlowCard: React.FC = () => {
     </section>
   );
 };
+

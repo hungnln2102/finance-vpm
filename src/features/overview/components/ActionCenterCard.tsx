@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApp } from '../../../context/AppContext';
+import { useApp } from './../../../context/useApp';
 import { TODAY } from '../../../data/constants';
 import { detectAllIssues } from '../../../services/financeService';
 import { IssueItem } from '../../../types';
@@ -123,3 +123,4 @@ export const ActionCenterCard: React.FC = () => {
     </section>
   );
 };
+

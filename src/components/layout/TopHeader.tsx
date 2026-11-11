@@ -1,7 +1,7 @@
-import React from 'react';
-import { useApp } from '../../context/AppContext';
+import React, { useMemo } from 'react';
+import { useApp } from './../../context/useApp';
 import { ROLE_DEFINITIONS, TODAY } from '../../data/constants';
-import { dmy, monthLabel } from '../../utils/formatters';
+import { dmy, monthLabel, generateAvailableMonths } from '../../utils/formatters';
 import { Calendar, UserCheck, CheckCircle2 } from 'lucide-react';
 
 const VIEW_TITLES: Record<string, { title: string; subtitle: (month: string) => string }> = {
@@ -10,8 +10,8 @@ const VIEW_TITLES: Record<string, { title: string; subtitle: (month: string) => 
     subtitle: () => `Tình hình tài chính đến ngày ${dmy(TODAY)}/2026 · Tự động tính toán realtime theo chuẩn ACID`
   },
   ledger: {
-    title: 'Sổ Giao Dịch Gốc & Webhook',
-    subtitle: (m) => `Lưu trữ hóa đơn chứng từ gốc · Bắt biến động số dư ACB & Khớp lệnh 3 cấp · ${monthLabel(m)}`
+    title: 'Sổ Giao Dịch Gốc',
+    subtitle: (m) => `Lưu trữ hóa đơn chứng từ gốc · Kiểm soát dòng tiền & Phê duyệt 3 cấp · ${monthLabel(m)}`
   },
   proposals: {
     title: 'Kế Hoạch & Đệ Trình Phê Duyệt',
@@ -44,10 +44,16 @@ const VIEW_TITLES: Record<string, { title: string; subtitle: (month: string) => 
 };
 
 export const TopHeader: React.FC = () => {
-  const { ui, setMonth } = useApp();
+  const { state, ui, setMonth, setDateRange } = useApp();
 
   const currentViewConfig = VIEW_TITLES[ui.view] || VIEW_TITLES.overview;
   const currentRoleDef = ROLE_DEFINITIONS[ui.role] || ROLE_DEFINITIONS.master;
+
+  // Tự động sinh danh mục tháng linh hoạt từ quá khứ đến hiện tại thời gian thực và tương lai
+  const availableMonths = useMemo(() => {
+    const existing = state.tx.map((t) => (t.date ? t.date.slice(0, 7) : ''));
+    return generateAvailableMonths('2026-08', 3, existing);
+  }, [state.tx]);
 
   return (
     <header className="top-header">
@@ -62,21 +68,79 @@ export const TopHeader: React.FC = () => {
       </div>
 
       <div className="top-controls">
-        {/* Bộ chọn kỳ tháng kế toán */}
+        {/* Bộ chọn kỳ tháng kế toán linh hoạt */}
         <label htmlFor="month-select" className="control-label">
           <Calendar size={15} />
           <span>Kỳ</span>
           <select
             id="month-select"
             value={ui.month}
-            onChange={(e) => setMonth(e.target.value)}
+            onChange={(e) => {
+              setMonth(e.target.value);
+              setDateRange('', '');
+            }}
             aria-label="Chọn kỳ tháng"
           >
-            <option value="2026-08">Tháng 8/2026</option>
-            <option value="2026-09">Tháng 9/2026</option>
-            <option value="2026-10">Tháng 10/2026</option>
+            {availableMonths.map((m) => (
+              <option key={m} value={m}>
+                {monthLabel(m)}
+              </option>
+            ))}
           </select>
         </label>
+
+        {/* Bộ lọc khoảng ngày dd/mm/yyyy - dd/mm/yyyy */}
+        <div className="control-label" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Calendar size={14} />
+          <input
+            type="date"
+            value={ui.dateFrom || ''}
+            onChange={(e) => setDateRange(e.target.value, ui.dateTo)}
+            title="Từ ngày (dd/mm/yyyy)"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--ink)',
+              fontFamily: 'var(--f-num)',
+              fontSize: '12px',
+              cursor: 'pointer'
+            }}
+          />
+          <span style={{ color: 'var(--muted)', fontSize: '12px' }}>—</span>
+          <input
+            type="date"
+            value={ui.dateTo || ''}
+            onChange={(e) => setDateRange(ui.dateFrom, e.target.value)}
+            title="Đến ngày (dd/mm/yyyy)"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--ink)',
+              fontFamily: 'var(--f-num)',
+              fontSize: '12px',
+              cursor: 'pointer'
+            }}
+          />
+          {(ui.dateFrom || ui.dateTo) && (
+            <button
+              type="button"
+              className="btn xs"
+              onClick={() => setDateRange('', '')}
+              title="Đặt lại khoảng ngày"
+              style={{
+                padding: '1px 5px',
+                fontSize: '10px',
+                lineHeight: 1,
+                borderRadius: '4px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                color: '#ef4444',
+                border: 'none'
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
 
         {/* Profile Badge hiển thị người dùng hiện tại */}
         <div className="user-profile-badge" title={currentRoleDef.description}>

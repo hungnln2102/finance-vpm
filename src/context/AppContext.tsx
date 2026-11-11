@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { 
   AppState, 
   UIState, 
@@ -19,6 +19,7 @@ import { dmy, mon, monthLabel, fmt } from '../utils/formatters';
 import { needsApproval } from '../services/financeService';
 import { detectAttendanceAlerts } from '../services/payrollService';
 import { gasService, isGasEnvironment } from '../services/gasService';
+import { apiClient } from '../services/apiClient';
 
 export interface ToastState {
   message: string;
@@ -26,7 +27,7 @@ export interface ToastState {
   visible: boolean;
 }
 
-interface AppContextType {
+export interface AppContextType {
   state: AppState;
   ui: UIState;
   toast: ToastState;
@@ -35,6 +36,7 @@ interface AppContextType {
   setView: (view: ActiveTab, filter?: any) => void;
   setRole: (role: Role) => void;
   setMonth: (month: string) => void;
+  setDateRange: (from?: string, to?: string) => void;
   setLedgerFilter: (filter: UIState['ledgerFilter']) => void;
   setDebtKind: (kind: 'KH' | 'TV') => void;
   setDebtOnlyOver: (onlyOver: boolean) => void;
@@ -90,9 +92,10 @@ interface AppContextType {
   lockMonth: (month: string) => void;
   unlockMonth: (month: string) => void;
   resetData: () => void;
+  refreshFromDatabase: () => Promise<boolean>;
 }
 
-const AppContext = createContext<AppContextType | undefined>(undefined);
+export const AppContext = createContext<AppContextType | undefined>(undefined);
 
 function seedInitialGifts(txList: Transaction[]): { items: GiftItem[]; mv: GiftMovement[] } {
   const findId = (d: string) => (txList.find((t) => t.desc.trim().toLowerCase() === d) || {}).id || '';
@@ -123,39 +126,7 @@ function seedInitialGifts(txList: Transaction[]): { items: GiftItem[]; mv: GiftM
 }
 
 function seedInitialWebhooks(): BankWebhookLog[] {
-  return [
-    {
-      id: 'WH-001',
-      bankTxId: 'ACB-847291823',
-      date: '2026-10-15',
-      acc: 'ACB',
-      dir: 'in',
-      amount: 15000000,
-      description: 'NGUYEN VAN CUONG THANH TOAN HOP DONG KH012',
-      status: 'unmatched'
-    },
-    {
-      id: 'WH-002',
-      bankTxId: 'ACB-847291889',
-      date: '2026-10-16',
-      acc: 'ACB',
-      dir: 'in',
-      amount: 25000000,
-      description: 'DFAM CAP VON KINH DOANH THANG 10 HOI THAO',
-      status: 'auto_matched',
-      matchedTxId: 'T202610-001'
-    },
-    {
-      id: 'WH-003',
-      bankTxId: 'ACB-847292100',
-      date: '2026-10-16',
-      acc: 'ACB',
-      dir: 'out',
-      amount: 4500000,
-      description: 'THANH TOAN TIEN THUE VAN PHONG THANG 10',
-      status: 'unmatched'
-    }
-  ];
+  return [];
 }
 
 function seedInitialProposals(): Proposal[] {
@@ -268,7 +239,8 @@ function loadInitialState(): AppState {
 
   if (saved && saved.v === 1 && saved.state) {
     const merged = Object.assign(base, saved.state);
-    if (!merged.webhooks || merged.webhooks.length === 0) merged.webhooks = seedInitialWebhooks();
+    if (!merged.webhooks) merged.webhooks = [];
+    merged.webhooks = merged.webhooks.filter((w: BankWebhookLog) => !w.id.startsWith('WH-'));
     if (!merged.proposals || merged.proposals.length === 0) merged.proposals = seedInitialProposals();
     if (!merged.costAdjustments || merged.costAdjustments.length === 0) merged.costAdjustments = seedInitialCostAdjustments();
     return merged;
@@ -282,7 +254,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const defaultUi: UIState = {
       view: 'overview',
       role: 'operator',
-      month: '2026-10',
+      month: mon(TODAY),
       sel: null,
       ledgerFilter: 'all',
       debtKind: 'KH',
@@ -320,7 +292,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => clearTimeout(timer);
   }, [toast.visible]);
 
-  // Load data from Google Apps Script if running inside GAS Web App
+  // Load data from Google Apps Script or Local Backend (PostgreSQL)
   useEffect(() => {
     if (isGasEnvironment()) {
       gasService.fetchInitialData().then((gasData) => {
@@ -332,7 +304,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           showToast('Đã đồng bộ dữ liệu mới nhất từ Google Sheets', 'success');
         }
       });
+      return;
     }
+
+    // Tải dữ liệu từ Local PostgreSQL qua Backend API
+    apiClient.getState().then((dbData) => {
+      if (dbData && dbData.tx && dbData.tx.length > 0) {
+        setState((prev) => ({
+          ...prev,
+          ...dbData
+        }));
+        showToast('Đã kết nối PostgreSQL (schema: finance_vpm)', 'success');
+      }
+    });
   }, [showToast]);
 
   // Persist State to localStorage
@@ -441,6 +425,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUi((prev) => ({ ...prev, month, editTx: null }));
   }, []);
 
+  const setDateRange = useCallback((dateFrom?: string, dateTo?: string) => {
+    setUi((prev) => ({ ...prev, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }));
+  }, []);
+
   const setLedgerFilter = useCallback((ledgerFilter: UIState['ledgerFilter']) => {
     setUi((prev) => ({ ...prev, ledgerFilter }));
   }, []);
@@ -512,6 +500,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       gasService.addTransaction(newTx);
+      apiClient.addTransaction(newTx);
       addLog(`Ghi ${newTx.id} · ${newTx.desc} · ${fmt(newTx.amt)} đ`);
       setUi((prev) => ({ ...prev, month: mon(data.date) }));
 
@@ -520,7 +509,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else if (newTx.status === 'pending_master') {
         showToast('Đã ghi chứng từ, chuyển Sếp Mavryk duyệt', 'warn');
       } else {
-        showToast('Đã ghi nhận chính thức vào Sổ Cái', 'success');
+        showToast('Đã ghi nhận chính thức vào Sổ Cái (PostgreSQL & Sheet)', 'success');
       }
     },
     [state.locks, state.tx.length, ui.role, addLog, showToast]
@@ -534,8 +523,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { ...prev, tx: list };
       });
       gasService.updateTransaction(id, updates);
+      apiClient.updateTransaction(id, updates);
       addLog(`Cập nhật giao dịch ${id}`);
-      showToast('Đã lưu phân loại giao dịch', 'success');
+      showToast('Đã lưu phân loại giao dịch (PostgreSQL & Sheet)', 'success');
     },
     [addLog, showToast]
   );
@@ -549,6 +539,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'pending_master' } : t))
       }));
       gasService.updateTransaction(id, { status: 'pending_master' });
+      apiClient.updateTransaction(id, { status: 'pending_master' });
       addLog(`Admin sơ duyệt ${tx.id} · ${tx.desc}`);
       showToast('Đã sơ duyệt, chuyển tiếp Master phê duyệt', 'success');
     },
@@ -564,6 +555,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'pending_master' } : t))
       }));
       gasService.updateTransaction(id, { status: 'pending_master' });
+      apiClient.updateTransaction(id, { status: 'pending_master' });
       addLog(`Admin chuyển tiếp ${tx.id} lên Master`);
       showToast('Đã chuyển tiếp lên Master phê duyệt', 'success');
     },
@@ -579,6 +571,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'posted' } : t))
       }));
       gasService.updateTransaction(id, { status: 'posted' });
+      apiClient.updateTransaction(id, { status: 'posted' });
       addLog(`Master phê duyệt cuối cùng đưa vào Sổ Cái: ${tx.id}`);
       showToast('👑 Đã ghi nhận chính thức vào Sổ Cái (Posted)', 'success');
     },
@@ -595,6 +588,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'returned', note: noteMsg } : t))
       }));
       gasService.updateTransaction(id, { status: 'returned', note: noteMsg });
+      apiClient.updateTransaction(id, { status: 'returned' });
       addLog(`Trả lại ${tx.id}: ${noteMsg}`);
       showToast('Đã trả lại cho nhân viên nhập liệu', 'warn');
     },
@@ -611,6 +605,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'rejected', note: noteMsg } : t))
       }));
       gasService.updateTransaction(id, { status: 'rejected', note: noteMsg });
+      apiClient.updateTransaction(id, { status: 'rejected' });
       addLog(`Từ chối giao dịch ${tx.id}: ${noteMsg}`);
       showToast('Đã từ chối giao dịch', 'error');
     },
@@ -626,6 +621,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tx: prev.tx.map((t) => (t.id === id ? { ...t, status: 'posted' } : t))
       }));
       gasService.updateTransaction(id, { status: 'posted' });
+      apiClient.updateTransaction(id, { status: 'posted' });
       addLog(`Duyệt chốt sổ ${tx.id} · ${fmt(tx.amt)} đ`);
       showToast('👑 Đã phê duyệt chốt vào Sổ Cái (Posted)', 'success');
     },
@@ -917,6 +913,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }));
 
       gasService.addContract(newContract);
+      apiClient.addContract(newContract);
       addLog(`Thêm hợp đồng ${newContract.id} · ${newContract.customer}`);
       const rate = newContract.fee ? newContract.disc / newContract.fee : 0;
       if (rate > 0.3) {
@@ -988,6 +985,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         gasService.saveAttendance(staffMember.name, dateIso, nextVal ?? '');
+        apiClient.saveAttendance(staffId, dateIso, nextVal ?? '');
 
         return {
           ...prev,
@@ -1104,6 +1102,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Đã khôi phục dữ liệu gốc từ 8 file khách', 'success');
   }, [showToast]);
 
+  const refreshFromDatabase = useCallback(async () => {
+    try {
+      const dbData = await apiClient.getState();
+      if (dbData && dbData.tx && dbData.tx.length > 0) {
+        setState((prev) => ({
+          ...prev,
+          ...dbData
+        }));
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
@@ -1115,6 +1129,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setView,
         setRole,
         setMonth,
+        setDateRange,
         setLedgerFilter,
         setDebtKind,
         setDebtOnlyOver,
@@ -1145,7 +1160,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateClosing,
         lockMonth,
         unlockMonth,
-        resetData
+        resetData,
+        refreshFromDatabase
       }}
     >
       {children}
@@ -1153,10 +1169,3 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 };
 
-export const useApp = (): AppContextType => {
-  const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useApp must be used within an AppProvider');
-  }
-  return context;
-};
