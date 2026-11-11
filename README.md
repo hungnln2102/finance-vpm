@@ -8,15 +8,26 @@
 
 ## 🚀 Cách chạy ứng dụng
 
-### Cách 1: Mở trực tiếp
-Mở file `index.html` bằng bất kỳ trình duyệt nào (Chrome, Edge, Firefox, Cốc Cốc, Safari...).
-
-### Cách 2: Khởi chạy qua Local Web Server
+### 1. Môi trường phát triển (Dev)
+Khởi chạy đồng thời cả Backend API Server (cổng 3001) và Vite Dev Server (cổng 5173):
 ```bash
-npm start
-# hoặc
-npx serve .
+npm run dev
 ```
+
+### 2. Môi trường Triển khai (Production Deployment)
+Đóng gói và khởi chạy toàn diện hệ thống:
+```bash
+npm run build
+npm start
+```
+Hệ thống sẽ phục vụ cả REST API và Giao diện Web trên cổng `3001` (hoặc cổng cấu hình qua biến môi trường `PORT`).
+
+---
+
+## 📊 Cơ sở dữ liệu & Đồng bộ Google Sheet
+- **PostgreSQL 16:** Lưu trữ bền vững dữ liệu nghiệp vụ (schema `finance_vpm`).
+- **Google Sheet Database:** Đóng vai trò là Database đám mây trực quan với 9 tab nghiệp vụ, đồng bộ 2 chiều thời gian thực qua Webhook REST API ([gas/api.gs](file:///e:/Project/finance-vpm/gas/api.gs)).
+- Toàn bộ tài liệu đặc tả nghiệp vụ, công thức kế toán và hướng dẫn thiết lập xem tại: [docs/SYSTEM_GUIDE.md](file:///e:/Project/finance-vpm/docs/SYSTEM_GUIDE.md).
 
 ---
 

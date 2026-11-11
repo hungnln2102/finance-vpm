@@ -83,12 +83,11 @@ export const getRealCurrentMonth = (): string => {
  * Tạo danh sách các tháng linh hoạt từ quá khứ đến hiện tại và tương lai
  */
 export const generateAvailableMonths = (
-  startMonth = '2026-08',
   extraMonths = 3,
   existingMonths: string[] = []
 ): string[] => {
   const current = getRealCurrentMonth();
-  const set = new Set<string>(['2026-08', '2026-09', '2026-10', current]);
+  const set = new Set<string>([current]);
 
   // Thêm các tháng đã phát sinh từ database
   existingMonths.forEach((m) => {

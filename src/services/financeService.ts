@@ -13,9 +13,6 @@ export function txIssues(t: Transaction): string[] {
   if (t.status !== 'migrated' && !t.doc && t.acc !== 'BT') {
     out.push('Chưa đính chứng từ');
   }
-  if ((t.type === 'THU_KH' || t.type === 'THU_TV') && !t.contract) {
-    out.push('Chưa gắn hợp đồng');
-  }
   return out;
 }
 

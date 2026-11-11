@@ -1,9 +1,9 @@
 import React from 'react';
 import { AppProvider } from './context/AppContext';
 import { useApp } from './context/useApp';
-import { RailNav } from './components/layout/RailNav';
-import { TopHeader } from './components/layout/TopHeader';
-import { Toast } from './components/common/Toast';
+import { RailNav } from './shared/components/layout/RailNav';
+import { TopHeader } from './shared/components/layout/TopHeader';
+import { Toast } from './shared/components/common/Toast';
 import { OverviewView } from './features/overview/OverviewView';
 import { LedgerView } from './features/ledger/LedgerView';
 import { ProposalsView } from './features/proposals/ProposalsView';

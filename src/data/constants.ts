@@ -2,11 +2,11 @@ import { Role, RoleDefinition, OpexCategoryMap, TransactionTypeMap, AccountMap }
 import { getRealToday } from '../utils/formatters';
 
 export const TODAY = getRealToday();
-export const OPEN_DATE = "2026-08-01";
-export const KEY = "sogoc-bkd-v1";
+export const OPEN_DATE = "2026-11-01";
+export const KEY = "sogoc-bkd-v2";
 
 export const OPEN_BAL: Record<string, number> = {
-  QUY: -1487000,
+  QUY: 0,
   ACB: 0,
   BT: 0
 };

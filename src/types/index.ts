@@ -94,6 +94,15 @@ export type OpexCategory = 'LUONG' | 'VP' | 'SUKIEN' | 'CSKH' | 'NOIBO' | 'KHAC'
 
 export type AccountKey = 'QUY' | 'ACB' | 'BT';
 
+export interface AccountItem {
+  id: string;
+  name: string;
+  type?: string;
+  accountNo?: string;
+  bankName?: string;
+  status?: string;
+}
+
 export interface Transaction {
   id: string;
   acc: AccountKey | string;
@@ -208,6 +217,7 @@ export interface AppState {
   contracts: Contract[];
   tx: Transaction[];
   staff: Staff[];
+  accounts?: AccountItem[];
   attMonth: string;
   holidays: string[];
   att: Record<string, AttendanceRecord>;

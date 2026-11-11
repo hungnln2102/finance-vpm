@@ -308,3 +308,247 @@
 - Da sua: tach hook useApp sang src/context/useApp.ts va cap nhat toan bo import.
 - Kiem tra: npm run build thanh cong.
 - Con thieu: chua the deploy GAS vi browser access host khong kha dung; can cap nhat gas/api.gs va tao deployment version moi.
+ 
+ 
+## [20:35] Tái Cấu Trúc Toàn Diện: Dọn Dẹp Mã Nguồn Rác & Chuyển Đổi Sang Triển Khai Web Độc Lập
+
+- **Phạm vi**:
+  - Xác nhận kiến trúc chính thức: Google Sheet chuyển thành Headless Cloud Database thuần túy (kết nối qua Webhook REST API), ứng dụng Web được deploy độc lập trên hạ tầng Web Server / Cloud.
+  - Loại bỏ toàn bộ các tệp phục vụ nhúng giao diện bên trong Google Apps Script iframe/dialog/sidebar cũ và các công cụ debug không còn cần thiết:
+    + Xóa `index.legacy.html` (124 KB): Tệp nguyên khối HTML cũ từ ban đầu.
+    + Xóa `gas/Code.gs` (120 KB), `gas/Code.js` (120 KB), `gas/index.html` (77 KB): Bộ mã nguồn cũ phục vụ HtmlService trong Sheet.
+    + Xóa toàn bộ thư mục `scripts/` (12 script đóng gói, debug CDP, test login iframe, string-split).
+    + Xóa `server/fullSeed.json` (93 KB): Tệp mock data cũ chỉ dùng cho script đóng gói đã xóa.
+    + Xóa `src/services/gasService.ts` và gỡ bỏ toàn bộ tham chiếu `window.google.script.run` trong [src/context/AppContext.tsx](file:///e:/Project/finance-vpm/src/context/AppContext.tsx).
+    + Xóa `GAS_DEPLOY_GUIDE.md` và thay bằng [GOOGLE_SHEET_SETUP.md](file:///e:/Project/finance-vpm/GOOGLE_SHEET_SETUP.md).
+  - Giữ lại duy nhất tệp [gas/api.gs](file:///e:/Project/finance-vpm/gas/api.gs) làm Webhook Controller cho Google Sheet Database.
+  - Nâng cấp [server/index.mjs](file:///e:/Project/finance-vpm/server/index.mjs): Cấu hình Express phục vụ trực tiếp Web Frontend tĩnh (`dist/`) và fallback SPA routing.
+  - Cập nhật [package.json](file:///e:/Project/finance-vpm/package.json): Bỏ script `build:gas`, bổ sung script `npm start` phục vụ production.
+- **Trạng thái nghiệm thu**: ĐÃ HOÀN THÀNH (Accepted)
+- **Kiểm tra đã chạy**:
+  - `node --check server/index.mjs; node --check server/db.mjs`: Cú pháp JavaScript Backend đạt chuẩn 100%.
+  - `npm run build`: Typecheck và Vite build đóng gói thành công 100% trong 2.19s, 0 lỗi, 0 cảnh báo.
+
+
+## [22:05] Tối Ưu Hóa Form Nhập Giao Dịch Mới (Phân Loại Thu/Chi, Database Accounts, Hợp Đồng Tùy Chọn)
+
+- **Phạm vi**:
+  - Tái cấu trúc trường **Loại tiền**: Rút gọn danh sách 10 loại phức tạp thành đúng 2 loại chuẩn: `Thu (Tiền vào +)` và `Chi (Tiền ra -)`.
+  - Trường **Tài khoản**: Chuyển sang lấy động từ bảng cơ sở dữ liệu `finance_vpm.accounts` (`QUY`, `ACB`, `MB`, `TCB`...).
+  - Trường **Hợp đồng liên kết**: Chuyển thành tùy chọn `(Không bắt buộc)`, cho phép để trống và xóa bỏ toàn bộ cờ cảnh báo bắt buộc trong `financeService.ts`.
+  - Trường **Nhóm chi phí**: Tự động vô hiệu hóa (`disabled`) khi là khoản Thu và chỉ kích hoạt khi là khoản Chi.
+- **Trạng thái nghiệm thu**: ĐÃ HOÀN THÀNH (Accepted)
+- **Thay đổi kỹ thuật**:
+  - [src/features/ledger/components/TransactionModal.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/TransactionModal.tsx): Thiết kế lại toàn bộ form theo tiêu chuẩn mới.
+  - [server/db.mjs](file:///e:/Project/finance-vpm/server/db.mjs): Thêm bảng `accounts`, seed dữ liệu mặc định và hàm `getAccounts()`.
+  - [server/index.mjs](file:///e:/Project/finance-vpm/server/index.mjs): Mở route `GET /api/accounts`.
+  - [src/context/AppContext.tsx](file:///e:/Project/finance-vpm/src/context/AppContext.tsx): Nạp `accounts` từ DB và hỗ trợ `dir` Thu/Chi.
+  - [src/services/financeService.ts](file:///e:/Project/finance-vpm/src/services/financeService.ts): Gỡ bỏ cảnh báo bắt buộc gắn hợp đồng.
+  - [src/services/apiClient.ts](file:///e:/Project/finance-vpm/src/services/apiClient.ts) & [src/types/index.ts](file:///e:/Project/finance-vpm/src/types/index.ts): Định nghĩa kiểu `AccountItem` và client `getAccounts`.
+- **Kiểm tra đã chạy**:
+  - `npm run build`: Compile TypeScript và Vite đóng gói thành công 100% trong 2.42s.
+  - Query DB xác nhận bảng `finance_vpm.accounts` có 4 tài khoản hoạt động (`QUY`, `ACB`, `MB`, `TCB`).
+
+
+## [22:10] Kéo và Đồng Bộ Toàn Diện Git Submodule .agents (core-agents)
+
+- **Phạm vi**:
+  - Kiểm tra trạng thái Git Submodule `.agents` (trỏ về repo `https://github.com/hungnln2102/core-agents.git`).
+  - Thực thi `git submodule update --init --recursive` và `git submodule update --remote --merge` để kéo toàn bộ mã nguồn của `core-agents` về thư mục `.agents`.
+  - Xác nhận checkout thành công tại commit mới nhất `71efde7` (nhánh `heads/main`).
+  - Đồng bộ đầy đủ các thành phần: Hiến pháp AI Agent tối cao (`.agents/AGENTS.md`), bộ kỹ năng (`.agents/skills/`), plugins (`.agents/plugins/subagent-team/`), rules và workflows.
+- **Trạng thái nghiệm thu**: ĐÃ HOÀN THÀNH (Accepted)
+- **Thay đổi kỹ thuật**:
+  - [.agents](file:///e:/Project/finance-vpm/.agents): Khởi tạo và checkout đầy đủ commit `71efde7347983712b0c31f89dfa198c95399f67d`.
+- **Kiểm tra đã chạy**:
+  - `git submodule status`: Trả về ` 71efde7347983712b0c31f89dfa198c95399f67d .agents (heads/main)` (đã checkout sạch sẽ, không còn trạng thái missing `-`).
+
+
+## [22:35] Đồng Bộ Realtime 1-1 Toàn Diện Giữa 10 Bảng PostgreSQL & 10 Tab Google Sheet (Kèm Nhật Ký Kiểm Toán Audit Logs)
+
+- **Phạm vi**:
+  - Triển khai yêu cầu tối cao của Master: *"postgres có bao nhiêu bảng nghiệp vụ thì ở Google Sheet phải có bấy nhiêu bảng nghiệp vụ. Và tôi muốn cả 2 nó phải realtime, postgres cập nhật là sheet cũng cập nhật realtime luôn, kể cả các log, tạo, sửa, xóa..."*.
+  - **Thiết lập Ma trận 10 Bảng nghiệp vụ chuẩn 1-1**:
+    1. `finance_vpm.monthly_balances` $\iff$ Tab `00_SODU_KY` (10 cột: Kỳ tháng, Quỹ đầu/cuối kỳ, ACB đầu/cuối kỳ, Tổng đầu/cuối kỳ, Biến động, Trạng thái, Cập nhật).
+    2. `finance_vpm.transactions` $\iff$ Tab `01_SOGOC_2026` (13 cột: Mã GD, Ngày GD, Tài khoản, Chiều tiền, Số tiền, Nội dung, Phân loại, Nhóm CP, Mã HĐ, Trạng thái, Cảnh báo, Chứng từ, Nguồn).
+    3. `finance_vpm.contracts` $\iff$ Tab `02_HOPDONG_2026` (12 cột: Mã HĐ, Loại HĐ, Tên KH, Số HĐ, Tư vấn, Ngày ký, Phí BH, Chiết khấu, Duyệt CK, Hạn TT, Kỳ hạn, Ghi chú).
+    4. `finance_vpm.gift_items` & `gift_movements` $\iff$ Tab `03_QUATANG` (7 cột: Mã quà, Tên quà / Ấn phẩm, Đơn vị tính, Đơn giá xuất kho, Số lượng tồn, Mục đích, Ghi chú).
+    5. `finance_vpm.attendance` $\iff$ Tab `04_CHAMCONG_2026` (5 cột: Mã NV, Họ tên NV, Ngày chấm, Số công, Trạng thái).
+    6. `finance_vpm.staff` $\iff$ Tab `05_NHANSU` (12 cột: Mã NV, Họ tên NV, Chức vụ, Lương cơ bản, Phụ cấp ĐT, Xăng, Ăn, Công tác, KPI, Lương BH, Phụ thuộc, Tạm ứng).
+    7. `finance_vpm.cost_adjustments` $\iff$ Tab `06_NGANSACH_2026` (7 cột: Mã điều chỉnh, Kỳ tháng, Danh mục, Định mức cũ, Định mức mới, Lý do, Trạng thái).
+    8. `finance_vpm.proposals` $\iff$ Tab `07_DEXUAT_KEHOACH` (9 cột: Mã đề xuất, Tiêu đề, Người lập, Email, Bộ phận, Số tiền, Ngày lập, Nội dung, Trạng thái).
+    9. `finance_vpm.accounts` $\iff$ Tab `08_TAIKHOAN_QUY` (6 cột: Mã tài khoản, Tên tài khoản / Quỹ, Phân loại, Số TK, Ngân hàng, Trạng thái).
+    10. `finance_vpm.audit_logs` $\iff$ Tab `09_NHATKY_HOATDONG` (7 cột: ID Log, Thời gian VN, Hành động, Bảng dữ liệu, Mã bản ghi, Người thực hiện, Chi tiết hoạt động).
+  - **Hệ Thống Realtime Dual-Sync Pipeline**:
+    - Xây dựng hàm trung tâm `dispatchRealtimeSync({ table, action, id, data, actor, details })` trong [server/sheetSync.mjs](file:///e:/Project/finance-vpm/server/sheetSync.mjs):
+      + Tự động ghi vết vào bảng `finance_vpm.audit_logs` trong PostgreSQL.
+      + Gửi Webhook sang Google Sheet: gọi `syncRow` (thêm mới hoặc cập nhật tại dòng tương ứng) hoặc `deleteRow` (xóa dòng theo ID) trên đúng Tab đó.
+      + Đồng thời ghi vết hoạt động vào Tab `09_NHATKY_HOATDONG` trên Google Sheet.
+      + Chạy ngầm Non-blocking, bảo đảm phản hồi của API cực nhanh mà không làm tắc nghẽn luồng xử lý.
+  - **Nâng Cấp Webhook Google Apps Script ([gas/api.gs](file:///e:/Project/finance-vpm/gas/api.gs))**:
+    - Khởi tạo khung 10 Tab chuẩn hóa qua `initAllDatabaseSheets()`: Header Navy `#0f172a`, chữ Cyan `#38bdf8`, freeze row 1, format tiền VND `#,##0 đ`.
+    - Hỗ trợ đầy đủ các hành động realtime: `syncRow`, `deleteRow`, `logActivity`, `syncFullDatabase`, `exportAllData`.
+    - Cơ chế khóa an toàn `LockService.getScriptLock()` bảo vệ dữ liệu theo chuẩn ACID khi nhận request realtime.
+  - **Đấu Nối Toàn Diện Vào Tất Cả Các Route Backend ([server/index.mjs](file:///e:/Project/finance-vpm/server/index.mjs)) & Frontend**:
+    - Mọi thao tác thêm/sửa/xóa giao dịch, hợp đồng, tài khoản, chấm công, đề xuất kế hoạch, điều chỉnh ngân sách, quà tặng... đều gọi `dispatchRealtimeSync`.
+- **Trạng thái nghiệm thu**: ĐÃ HOÀN THÀNH (Accepted)
+- **Thay đổi kỹ thuật**:
+  - [gas/api.gs](file:///e:/Project/finance-vpm/gas/api.gs): Tái cấu trúc toàn diện hỗ trợ 10 Tab và các hành động realtime `syncRow`, `deleteRow`, `logActivity`.
+  - [server/sheetSync.mjs](file:///e:/Project/finance-vpm/server/sheetSync.mjs): Thêm `dispatchRealtimeSync` kết hợp `recordAuditLog` và Webhook worker.
+  - [server/db.mjs](file:///e:/Project/finance-vpm/server/db.mjs): Bổ sung đầy đủ hàm CRUD cho `accounts`, `contracts`, `proposals`, `cost_adjustments`, `staff`, `gift_movements`, `audit_logs`.
+  - [server/index.mjs](file:///e:/Project/finance-vpm/server/index.mjs): Đấu nối đầy đủ các route REST API và liên kết `dispatchRealtimeSync`.
+  - [src/services/apiClient.ts](file:///e:/Project/finance-vpm/src/services/apiClient.ts): Bổ sung các phương thức client gọi backend cho toàn bộ 10 bảng nghiệp vụ.
+  - [src/context/AppContext.tsx](file:///e:/Project/finance-vpm/src/context/AppContext.tsx): Kết nối các action đề xuất, điều chỉnh chi phí, duyệt chiết khấu, quà tặng sang `apiClient`.
+- **Kiểm tra đã chạy**:
+  - `npm run build`: Compile TypeScript và Vite bundle thành công 100% trong 2.42s (0 lỗi).
+  - Integration Test thực tế:
+    + Thêm giao dịch mẫu `TEST_SYNC_8163` -> PostgreSQL ghi nhận thành công, `dispatchRealtimeSync` phát sinh event CREATE.
+    + Sửa giao dịch `TEST_SYNC_8163` -> PostgreSQL cập nhật số tiền 1.500.000 đ, `dispatchRealtimeSync` phát sinh event UPDATE.
+    + Xóa giao dịch `TEST_SYNC_8163` -> PostgreSQL xóa sạch bản ghi, `dispatchRealtimeSync` phát sinh event DELETE.
+    + Kiểm tra bảng `finance_vpm.audit_logs`: Ghi nhận chuẩn xác cả 3 vết CREATE, UPDATE, DELETE kèm thời gian và mô tả chi tiết.
+
+
+## [23:10] Tái Cấu Trúc Toàn Diện Hệ Thống: Chuẩn Hóa Domain-Driven Backend & Feature-Driven Frontend (Xóa Bỏ Triệt Để Monolith & God Files)
+
+- **Phạm vi & Mục tiêu**:
+  - Thực thi chỉ đạo tái cấu trúc toàn diện của Master theo Gói Đề Xuất Hợp Nhất (Spec-Kit SDD + Pre-Flight Check) đã được phê duyệt.
+  - Xóa bỏ triệt để tình trạng Monolith cồng kềnh ở Backend: phân rã `server/db.mjs` (42.5 KB) và `server/index.mjs` (21.8 KB) thành cấu trúc **Domain-Driven Architecture** chuẩn mực (`config/` + `domains/<domain>/`), tách rõ controller, service, routes và SSOT schema.
+  - Xóa bỏ triệt để các God Files và God Context ở Frontend:
+    + Thu gọn God Context [src/context/AppContext.tsx](file:///e:/Project/finance-vpm/src/context/AppContext.tsx) (41.5 KB, 1170 dòng xuống còn ~7 KB, 230 dòng), bóc tách thành các custom hook domain actions chuyên biệt (`useAppUiState`, `useTransactionActions`, `useProposalActions`, `useBudgetDebtActions`, `useOperationsActions`, `initialState`).
+    + Phân rã [src/features/ledger/components/BalanceTrackingTab.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/BalanceTrackingTab.tsx) (24 KB $\rightarrow$ 8 KB).
+    + Phân rã [src/features/proposals/ProposalsView.tsx](file:///e:/Project/finance-vpm/src/features/proposals/ProposalsView.tsx) (22.7 KB, 470 dòng $\rightarrow$ 2.1 KB, 58 dòng).
+    + Phân rã [src/features/budget/BudgetControlView.tsx](file:///e:/Project/finance-vpm/src/features/budget/BudgetControlView.tsx) (16.6 KB, 361 dòng $\rightarrow$ 2.8 KB, 75 dòng).
+    + Phân rã [src/features/ledger/LedgerView.tsx](file:///e:/Project/finance-vpm/src/features/ledger/LedgerView.tsx) (16.6 KB, 431 dòng $\rightarrow$ 9.6 KB, 256 dòng).
+    + Phân rã [src/features/debt/DebtView.tsx](file:///e:/Project/finance-vpm/src/features/debt/DebtView.tsx) (14.7 KB, 356 dòng $\rightarrow$ 2.4 KB, 60 dòng).
+    + Dọn dẹp hoàn toàn dead code cũ ([src/services/webhookService.ts](file:///e:/Project/finance-vpm/src/services/webhookService.ts)) và chuyển đổi layout components sang [src/shared/components/](file:///e:/Project/finance-vpm/src/shared/components/).
+  - Bảo toàn 100% tính tương thích ngược, API contract, cơ chế lưu trữ PostgreSQL ACID và đồng bộ Google Sheet Webhook.
+
+- **Trạng thái nghiệm thu**: ĐÃ HOÀN THÀNH (Accepted)
+
+- **Thay đổi kỹ thuật chi tiết**:
+  - **Backend (Domain-Driven Architecture)**:
+    - [server/config/dbPool.mjs](file:///e:/Project/finance-vpm/server/config/dbPool.mjs): Quản lý PostgreSQL Connection Pool, helper `withTransaction()` ACID và `checkDbHealth()`.
+    - [server/config/dbSchema.mjs](file:///e:/Project/finance-vpm/server/config/dbSchema.mjs): Nguồn sự thật duy nhất (SSOT) bảng dữ liệu và hàm `tableName()`.
+    - [server/domains/init/initDbService.mjs](file:///e:/Project/finance-vpm/server/domains/init/initDbService.mjs): DDL 12 bảng và bộ nạp seed data.
+    - [server/domains/state/stateService.mjs](file:///e:/Project/finance-vpm/server/domains/state/stateService.mjs): Dịch vụ tổng hợp trạng thái hệ thống `getFullState()`.
+    - [server/domains/accounts/accountsService.mjs](file:///e:/Project/finance-vpm/server/domains/accounts/accountsService.mjs) & [server/domains/accounts/accountsRoutes.mjs](file:///e:/Project/finance-vpm/server/domains/accounts/accountsRoutes.mjs): Domain quản lý tài khoản/nguồn tiền.
+    - [server/domains/ledger/ledgerService.mjs](file:///e:/Project/finance-vpm/server/domains/ledger/ledgerService.mjs) & [server/domains/ledger/ledgerRoutes.mjs](file:///e:/Project/finance-vpm/server/domains/ledger/ledgerRoutes.mjs): Domain sổ cái giao dịch và tính toán số dư chuyển tiếp.
+    - [server/domains/contracts/contractsService.mjs](file:///e:/Project/finance-vpm/server/domains/contracts/contractsService.mjs) & [server/domains/contracts/contractsRoutes.mjs](file:///e:/Project/finance-vpm/server/domains/contracts/contractsRoutes.mjs): Domain hợp đồng và duyệt chiết khấu.
+    - [server/domains/attendance/attendanceService.mjs](file:///e:/Project/finance-vpm/server/domains/attendance/attendanceService.mjs) & [server/domains/attendance/attendanceRoutes.mjs](file:///e:/Project/finance-vpm/server/domains/attendance/attendanceRoutes.mjs): Domain chấm công và nhân sự.
+    - [server/domains/proposals/proposalsService.mjs](file:///e:/Project/finance-vpm/server/domains/proposals/proposalsService.mjs) & [server/domains/proposals/proposalsRoutes.mjs](file:///e:/Project/finance-vpm/server/domains/proposals/proposalsRoutes.mjs): Domain hồ sơ đệ trình và trao đổi.
+    - [server/domains/budget/budgetService.mjs](file:///e:/Project/finance-vpm/server/domains/budget/budgetService.mjs) & [server/domains/budget/budgetRoutes.mjs](file:///e:/Project/finance-vpm/server/domains/budget/budgetRoutes.mjs): Domain định mức chi phí và điều chỉnh cost.
+    - [server/domains/gifts/giftsService.mjs](file:///e:/Project/finance-vpm/server/domains/gifts/giftsService.mjs) & [server/domains/gifts/giftsRoutes.mjs](file:///e:/Project/finance-vpm/server/domains/gifts/giftsRoutes.mjs): Domain kho quà tặng & ấn phẩm.
+    - [server/domains/audit/auditService.mjs](file:///e:/Project/finance-vpm/server/domains/audit/auditService.mjs) & [server/domains/audit/auditRoutes.mjs](file:///e:/Project/finance-vpm/server/domains/audit/auditRoutes.mjs): Domain nhật ký kiểm toán.
+    - [server/domains/sync/syncService.mjs](file:///e:/Project/finance-vpm/server/domains/sync/syncService.mjs) & [server/domains/sync/syncRoutes.mjs](file:///e:/Project/finance-vpm/server/domains/sync/syncRoutes.mjs): Domain đồng bộ hai chiều Google Sheet <=> DB.
+    - [server/db.mjs](file:///e:/Project/finance-vpm/server/db.mjs): Tinh gọn thành barrel exporter (2.1 KB, 76 dòng) bảo đảm tương thích ngược 100%.
+    - [server/index.mjs](file:///e:/Project/finance-vpm/server/index.mjs): Tinh gọn thành bootstrap server mỏng (3.2 KB, 96 dòng), tích hợp endpoint `/api/health` kiểm tra real pool status.
+
+  - **Frontend (Feature-Driven Architecture & Action Modularization)**:
+    - [src/context/initialState.ts](file:///e:/Project/finance-vpm/src/context/initialState.ts): Tách biệt logic nạp state ban đầu và dọn dẹp cache.
+    - [src/context/actions/useAppUiState.ts](file:///e:/Project/finance-vpm/src/context/actions/useAppUiState.ts): Quản lý UI state, Toast, phân quyền `canDo`, bộ lọc kỳ và ngày.
+    - [src/context/actions/useTransactionActions.ts](file:///e:/Project/finance-vpm/src/context/actions/useTransactionActions.ts): Toàn bộ xử lý nghiệp vụ giao dịch, sơ duyệt, duyệt posted, từ chối, webhook matching.
+    - [src/context/actions/useProposalActions.ts](file:///e:/Project/finance-vpm/src/context/actions/useProposalActions.ts): Toàn bộ xử lý đệ trình, phê duyệt, luồng trao đổi.
+    - [src/context/actions/useBudgetDebtActions.ts](file:///e:/Project/finance-vpm/src/context/actions/useBudgetDebtActions.ts): Nghiệp vụ ngân sách, điều chỉnh cost, hợp đồng công nợ và chiết khấu.
+    - [src/context/actions/useOperationsActions.ts](file:///e:/Project/finance-vpm/src/context/actions/useOperationsActions.ts): Chấm công, xuất nhập quà tặng, khóa sổ, refresh DB.
+    - [src/context/AppContext.tsx](file:///e:/Project/finance-vpm/src/context/AppContext.tsx): Thu gọn thành Provider mỏng gọn gàng, ghép nối các hook actions sạch sẽ.
+    - [src/features/ledger/components/balance/BalanceLiveKpis.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/balance/BalanceLiveKpis.tsx), [BalanceSyncActions.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/balance/BalanceSyncActions.tsx), [BalanceMatrixTable.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/balance/BalanceMatrixTable.tsx): Phân tách module quản lý số dư đa kỳ.
+    - [src/features/ledger/components/table/LedgerDataTable.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/table/LedgerDataTable.tsx), [LedgerPagination.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/table/LedgerPagination.tsx): Phân tách bảng và thanh phân trang đa năng.
+    - [src/features/proposals/components/ProposalKpiCards.tsx](file:///e:/Project/finance-vpm/src/features/proposals/components/ProposalKpiCards.tsx), [ProposalStatusBadge.tsx](file:///e:/Project/finance-vpm/src/features/proposals/components/ProposalStatusBadge.tsx), [ProposalListTable.tsx](file:///e:/Project/finance-vpm/src/features/proposals/components/ProposalListTable.tsx), [ProposalDetailCard.tsx](file:///e:/Project/finance-vpm/src/features/proposals/components/ProposalDetailCard.tsx), [ProposalCreateModal.tsx](file:///e:/Project/finance-vpm/src/features/proposals/components/ProposalCreateModal.tsx): Phân tách hồ sơ đệ trình.
+    - [src/features/budget/components/BudgetKpiCards.tsx](file:///e:/Project/finance-vpm/src/features/budget/components/BudgetKpiCards.tsx), [BudgetVarianceTable.tsx](file:///e:/Project/finance-vpm/src/features/budget/components/BudgetVarianceTable.tsx), [BudgetAdjustmentLog.tsx](file:///e:/Project/finance-vpm/src/features/budget/components/BudgetAdjustmentLog.tsx), [BudgetAdjustmentModal.tsx](file:///e:/Project/finance-vpm/src/features/budget/components/BudgetAdjustmentModal.tsx): Phân tách quản lý ngân sách & variance analysis.
+    - [src/features/debt/components/DebtKpiTiles.tsx](file:///e:/Project/finance-vpm/src/features/debt/components/DebtKpiTiles.tsx), [DebtAddContractForm.tsx](file:///e:/Project/finance-vpm/src/features/debt/components/DebtAddContractForm.tsx), [DebtTable.tsx](file:///e:/Project/finance-vpm/src/features/debt/components/DebtTable.tsx): Phân tách theo dõi công nợ.
+    - [src/shared/components/common/Toast.tsx](file:///e:/Project/finance-vpm/src/shared/components/common/Toast.tsx), [src/shared/components/layout/RailNav.tsx](file:///e:/Project/finance-vpm/src/shared/components/layout/RailNav.tsx), [src/shared/components/layout/TopHeader.tsx](file:///e:/Project/finance-vpm/src/shared/components/layout/TopHeader.tsx): Chuẩn hóa các layout components dùng chung.
+
+- **Kiểm tra đã chạy**:
+  - `node --check` kiểm tra cú pháp trên tất cả 26 file `.mjs` trong `server/`: 100% Valid Syntax.
+  - Integration Test runtime backend:
+    + Truy vấn trực tiếp PostgreSQL qua `db.checkDbHealth()`: Kết quả `dbHealthy: true`.
+    + Truy vấn `db.getFullState()` và `db.getAccounts()`: Dữ liệu tải đầy đủ (`accounts: 4`, `contracts: 18`, `tx: 0`), kết nối ổn định.
+  - `npm run build`: Type check TypeScript (`tsc`) và đóng gói Vite thành công 100% trong 2.37s, tạo bundle tối ưu (`dist/assets/index-BAK9u65h.js`), **0 lỗi, 0 cảnh báo type**.
+
+
+## [23:18] Cân Chỉnh Chia Đều Cột & Khắc Phục Lệch Phải Bảng Ma Trận Số Dư Đầu Kỳ & Cuối Kỳ
+
+- **Phạm vi**:
+  - Tiếp nhận phản hồi từ Master: Các ô trong bảng theo dõi số dư đầu kỳ & cuối kỳ theo tháng bị lệch, co cụm không đều và tạo cảm giác nghiêng dạt sang bên phải màn hình.
+  - Áp dụng cấu hình `tableLayout: 'fixed'` và dàn trải 100% chiều rộng trên thẻ `<table>`.
+  - Thiết lập thẻ `<colgroup>` phân bổ tỷ lệ phần trăm đối xứng hoàn hảo cho cả 9 cột:
+    + Cột `Kỳ tháng`: **12%** (chữ hiển thị trên 1 dòng với `whiteSpace: 'nowrap'`).
+    + 6 cột số dư tài chính (`Quỹ mặt - Đầu kỳ`, `Quỹ mặt - Cuối kỳ`, `ACB - Đầu kỳ`, `ACB - Cuối kỳ`, `Tổng quỹ - Đầu kỳ`, `Tổng quỹ - Cuối kỳ`): Mỗi cột chia **đều chằn chặn 11%** (chiếm 66% tổng bảng).
+    + Cột `Biến động ròng`: **11%** (căn giữa).
+    + Cột `Trạng thái kỳ`: **11%** (căn giữa).
+    *(Tổng cộng: 12% + 8 × 11% = 100%)*.
+  - Bổ sung đường phân cách thanh mảnh (`1px dashed rgba(148, 163, 184, 0.18)`) giữa 2 cột con `Đầu kỳ` và `Cuối kỳ` của từng quỹ, kết hợp căn giữa đồng nhất (`textAlign: 'center'`) cho toàn bộ tiêu đề và các con số `0 đ`, chấm dứt hoàn toàn hiện tượng số tiền bị ép dạt dính vào viền phải.
+- **Trạng thái nghiệm thu**: ĐÃ HOÀN THÀNH (Accepted)
+- **Thay đổi kỹ thuật**:
+  - [src/features/ledger/components/balance/BalanceMatrixTable.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/balance/BalanceMatrixTable.tsx): Cập nhật `tableLayout: 'fixed'`, `<colgroup>` 9 cột đều 11%, đường viền dashed nội bộ và căn giữa đối xứng.
+- **Kiểm tra đã chạy**:
+  - `npm run build`: TypeScript compile và Vite build thành công 100% trong 2.28s (0 lỗi).
+
+
+## [23:55] Triển Khai Toàn Diện Gói Nâng Cấp Theo Yêu Cầu Của Master: Modal Giao Dịch, Tab Quản Lý Tài Sản ON/OFF, Bảng Số Dư Cột Động, Tái Thiết Kế Trang Kế Hoạch 7 Cột Dropdown Accordion & Dữ Liệu Động KPI Tổng Quan
+
+- **Phạm vi & Mục tiêu**:
+  - Thực thi trọn vẹn 100% 5 hạng mục Master đã chỉ đạo và phê duyệt:
+    1. **Modal Giao Dịch**: Loại bỏ hoàn toàn trường `Hợp đồng liên kết`; bắt buộc phải chọn `Số tiền (> 0)`, `Nhóm chi phí` (khi Chi tiền), và `Diễn giải`, thiếu các trường này nút Tạo/Lưu sẽ bị vô hiệu hóa (`disabled`) và chuột hiển thị `not-allowed`.
+    2. **Sub-tab "Tài Sản Doanh Nghiệp"**: Thêm sub-tab thứ 3 tại Sổ Giao Dịch Gốc tổng hợp danh mục toàn bộ tài sản doanh nghiệp (tiền mặt tại két, tài khoản ngân hàng ACB, MB, Vietcombank, ví số...). Mỗi tài khoản có cột thao tác bật/tắt (Công tắc nguồn xanh ON / OFF).
+    3. **Bảng Số Dư Sinh Cột Động Theo Tab Tài Sản**: Tab Tài Sản có bao nhiêu tài khoản đang **ON** thì Bảng Số Dư Đầu Kỳ & Cuối Kỳ sinh bấy nhiêu cặp cột tương ứng. Tài khoản nào gạt sang **OFF** thì cột đó ngay lập tức tự động biến mất khỏi Bảng Số Dư.
+    4. **Tái Thiết Kế Trang Kế Hoạch & Đệ Trình (Proposals)**:
+       - 4 Thẻ KPI đầu trang được gom gọn nằm trên **1 hàng ngang** duy nhất.
+       - Gom 2 bảng trước đây thành **1 bảng hợp nhất duy nhất** full-width gồm đúng 7 cột: `Mã`, `Tiêu đề`, `Nội dung`, `Dự toán`, `Đã chi`, `Trạng thái`, `Thao tác`.
+       - Tích hợp tính năng **Dropdown Accordion Row**: Bấm vào dòng hoặc nút mở rộng sẽ bung ra bảng con bên dưới có **viền xanh dọc bên trái** (`border-left: 4px solid #3b82f6`) chuẩn 1-1 theo mẫu ảnh Master cung cấp, gồm đúng 6 cột: `STT`, `Ngày`, `Tiêu đề`, `Nội dung`, `Người gửi`, `Thao tác (Xem, Phản hồi)`, kèm khung soạn thảo phản hồi/giải trình và gửi email Inbound trực tiếp tại chỗ.
+    5. **Gắn Dữ Liệu Động Cho 5 Thẻ KPI Tổng Quan**:
+       - Thẻ `Tổng vốn khả dụng`: Đọc động toàn bộ tài khoản active từ PostgreSQL, tính số dư thật thời gian thực và hiển thị breakdown từng quỹ/ngân hàng.
+       - Thẻ `Thực thu`, `Opex`, `Thặng dư dòng tiền`: Đọc dữ liệu thật theo kỳ tháng `ui.month` từ `state.tx`.
+       - Thẻ `Công nợ quá hạn`: Tính toán thật từ danh sách hợp đồng có hạn thanh toán `due < TODAY`.
+
+- **Trạng thái nghiệm thu**: ĐÃ HOÀN THÀNH (Accepted)
+
+- **Thay đổi kỹ thuật chi tiết**:
+  - **Backend**:
+    - [server/domains/accounts/accountsService.mjs](file:///e:/Project/finance-vpm/server/domains/accounts/accountsService.mjs): Bổ sung `getAccounts(activeOnly)` và hàm `toggleAccountStatus(id, status)` cập nhật trạng thái `active`/`inactive`.
+    - [server/domains/accounts/accountsRoutes.mjs](file:///e:/Project/finance-vpm/server/domains/accounts/accountsRoutes.mjs): Mở endpoint `PATCH /api/accounts/:id/status` và query `GET /api/accounts?activeOnly=true`. Tích hợp `dispatchRealtimeSync` phát event UPDATE khi bật/tắt tài khoản.
+    - [server/domains/state/stateService.mjs](file:///e:/Project/finance-vpm/server/domains/state/stateService.mjs): Cập nhật `getFullState()` trả về toàn bộ accounts (cả active & inactive) để phục vụ quản lý toggle tại Tab Tài Sản.
+  - **Frontend**:
+    - [src/services/apiClient.ts](file:///e:/Project/finance-vpm/src/services/apiClient.ts): Thêm phương thức `toggleAccountStatus(id, status)`.
+    - [src/features/ledger/components/TransactionModal.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/TransactionModal.tsx): Xóa bỏ trường Hợp đồng liên kết, bắt buộc Số tiền + Nhóm chi phí + Diễn giải, dropdown tài khoản chỉ lọc các tài khoản đang active.
+    - [src/features/ledger/components/assets/AssetsManagementTab.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/assets/AssetsManagementTab.tsx): Tạo mới component quản lý danh mục tài sản doanh nghiệp, 4 thẻ KPI thống kê, bảng danh mục đầy đủ thông tin, công tắc nguồn xanh ON/OFF và modal tạo tài sản mới.
+    - [src/features/ledger/LedgerView.tsx](file:///e:/Project/finance-vpm/src/features/ledger/LedgerView.tsx): Tích hợp Sub-tab thứ 3 `assets` (`💼 Tài Sản Doanh Nghiệp`), tính `totalFund` động từ toàn bộ tài khoản active.
+    - [src/features/ledger/components/BalanceTrackingTab.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/BalanceTrackingTab.tsx): Lọc `activeAccounts`, tính số dư realtime và ma trận các tháng động theo số lượng tài khoản active.
+    - [src/features/ledger/components/balance/BalanceLiveKpis.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/balance/BalanceLiveKpis.tsx): Hiển thị động các thẻ KPI cho từng tài khoản active + 1 thẻ KPI Tổng cộng toàn hệ thống.
+    - [src/features/ledger/components/balance/BalanceMatrixTable.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/balance/BalanceMatrixTable.tsx): Bảng số dư sinh cột ĐỘNG theo tài khoản active: phân chia `<colgroup>`, header 2 tầng sinh động, thân bảng render đúng các tài khoản ON, tài khoản OFF tự biến mất.
+    - [src/features/proposals/components/ProposalKpiCards.tsx](file:///e:/Project/finance-vpm/src/features/proposals/components/ProposalKpiCards.tsx): Cấu hình grid 4 thẻ nằm trên 1 hàng ngang.
+    - [src/features/proposals/components/ProposalListTable.tsx](file:///e:/Project/finance-vpm/src/features/proposals/components/ProposalListTable.tsx): Gom 2 bảng thành 1 bảng 7 cột chuẩn (`Mã`, `Tiêu đề`, `Nội dung`, `Dự toán`, `Đã chi`, `Trạng thái`, `Thao tác`), tích hợp Accordion Dropdown Sub-table có viền xanh dọc bên trái, bảng con 6 cột (`STT`, `Ngày`, `Tiêu đề`, `Nội dung`, `Người gửi`, `Thao tác`) và modal xem chi tiết tin nhắn.
+    - [src/features/proposals/ProposalsView.tsx](file:///e:/Project/finance-vpm/src/features/proposals/ProposalsView.tsx): Loại bỏ layout 2 cột cũ, tích hợp bảng hợp nhất mới. Xóa bỏ dead file `ProposalDetailCard.tsx`.
+    - [src/features/overview/components/ExecutiveKpiCards.tsx](file:///e:/Project/finance-vpm/src/features/overview/components/ExecutiveKpiCards.tsx): Gắn dữ liệu thật cho 5 thẻ KPI Tổng Quan: Tổng vốn khả dụng động từ toàn bộ tài khoản active, Thực thu, Opex thực tế, Thặng dư ròng theo kỳ tháng chọn, và Nợ quá hạn.
+
+- **Kiểm tra đã chạy**:
+  - `node --check` kiểm tra cú pháp trên tất cả file `.mjs` backend: 100% Valid Syntax.
+  - `npm run build`: TypeScript compile (`tsc`) và Vite build thành công 100% trong 2.31s, **0 lỗi, 0 cảnh báo**.
+
+
+## [00:03] Tạo Dữ Liệu Test: Biên Lai Chi 5.800.000 đ Trong Sổ Giao Dịch Gốc
+
+- **Phạm vi**:
+  - Khởi tạo giao dịch chi thực tế theo yêu cầu của Master trong Sổ Giao Dịch Gốc:
+    + **Mã giao dịch**: `N0001`
+    + **Ngày ghi sổ**: `2026-11-11` (thời gian thực hôm nay)
+    + **Tài khoản trích tiền**: `ACB` (Ngân hàng Á Châu)
+    + **Chiều dòng tiền**: `Chi (out -)`
+    + **Số tiền**: **5.800.000 đ**
+    + **Diễn giải**: `Chi phí văn phòng - Thanh toán biên lai chi tiền`
+    + **Phân loại**: `OPEX` (Chi phí vận hành)
+    + **Nhóm chi phí**: `VP` (Mặt bằng & Văn phòng)
+    + **Hợp đồng liên kết**: Để trống (không bắt buộc theo quy tắc mới)
+    + **Trạng thái**: `posted` (Đã duyệt chính thức vào Sổ Cái)
+    + **Chứng từ đính kèm**: `Biên lai BL-5800K`
+    + **Nguồn tạo**: `Master Test`
+  - Đã nạp thành công vào cơ sở dữ liệu PostgreSQL 16 bảng `finance_vpm.transactions`.
+  - Đã kích hoạt hàm `recalculateMonthlyBalances()` tự động cập nhật số dư cuối kỳ Tháng 11/2026 trong bảng `finance_vpm.monthly_balances`.
+  - Đã phát sự kiện `dispatchRealtimeSync` ghi nhận vào `finance_vpm.audit_logs`.
+  - Đã đồng bộ vào [src/data/seedData.ts](file:///e:/Project/finance-vpm/src/data/seedData.ts) và [server/seedData.json](file:///e:/Project/finance-vpm/server/seedData.json) để đảm bảo dữ liệu hiển thị tức thì trên mọi môi trường.
+- **Trạng thái nghiệm thu**: ĐÃ HOÀN THÀNH (Accepted)
+- **Kiểm tra đã chạy**:
+  - Query trực tiếp database: `SELECT id, to_char(date, 'YYYY-MM-DD') as date, acc, dir, amt::float, description, type, cat, status, doc FROM finance_vpm.transactions;` -> Xác nhận trả về đúng bản ghi `N0001` chi 5.800.000 đ từ tài khoản ACB.
+  - `npm run build`: TypeScript compile và Vite build thành công 100% trong 2.53s.
+
+

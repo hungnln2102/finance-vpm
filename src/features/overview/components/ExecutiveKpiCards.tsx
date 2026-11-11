@@ -9,12 +9,24 @@ import { Wallet, TrendingUp, TrendingDown, DollarSign, AlertTriangle } from 'luc
 export const ExecutiveKpiCards: React.FC = () => {
   const { state, ui } = useApp();
 
-  // Số dư tiền mặt & ngân hàng tại ngày TODAY
-  const quy = calculateBalance(state.tx, 'QUY', TODAY);
-  const acb = calculateBalance(state.tx, 'ACB', TODAY);
-  const totalLiquid = quy + acb;
+  // 1. Dữ liệu thật: Số dư các tài khoản đang Kích Hoạt (ON) từ Tab Tài Sản
+  const activeAccounts = (state.accounts && state.accounts.length > 0)
+    ? state.accounts.filter((a) => a.status === 'active')
+    : [
+        { id: 'QUY', name: 'Tiền mặt', type: 'cash', status: 'active' },
+        { id: 'ACB', name: 'Ngân hàng ACB', type: 'bank', status: 'active' }
+      ];
 
-  // Công nợ
+  const accountBalances = activeAccounts.map((acc) => ({
+    id: acc.id,
+    name: acc.name,
+    bal: calculateBalance(state.tx, acc.id, TODAY)
+  }));
+
+  const totalLiquid = accountBalances.reduce((sum, a) => sum + a.bal, 0);
+  const anyNegativeAcc = accountBalances.find((a) => a.bal < 0);
+
+  // 2. Dữ liệu thật: Công nợ khách hàng & tư vấn
   const khDebts = state.contracts.filter((c) => c.kind === 'KH').map((c) => calculateDebt(c, state.tx, TODAY));
   const tvDebts = state.contracts.filter((c) => c.kind === 'TV').map((c) => calculateDebt(c, state.tx, TODAY));
 
@@ -22,21 +34,27 @@ export const ExecutiveKpiCards: React.FC = () => {
   const overTV = tvDebts.reduce((sum, d) => sum + (d.over > 0 ? d.left : 0), 0);
   const totalOverdue = overKH + overTV;
 
-  // Thực thu trong tháng đang chọn
+  // 3. Dữ liệu thật: Thực thu trong tháng đang chọn
   const mTx = monthTx(state.tx, ui.month);
-  const totalInflow = mTx.filter((t) => t.dir === 'in').reduce((sum, t) => sum + t.amt, 0);
+  const inTx = mTx.filter((t) => t.dir === 'in');
+  const totalInflow = inTx.reduce((sum, t) => sum + t.amt, 0);
 
-  // Chi phí vận hành trong tháng đang chọn
+  // 4. Dữ liệu thật: Chi phí vận hành trong tháng đang chọn
   const opexCat = opexBy(state.tx, ui.month);
   const totalOpex = Object.values(opexCat).reduce((a, b) => a + b, 0);
 
-  // Thặng dư / Thâm hụt dòng tiền kỳ này (Thu - Chi)
+  // Sắp xếp tìm 2 nhóm chi phí lớn nhất thực tế trong kỳ
+  const sortedOpex = Object.entries(opexCat).sort((a, b) => b[1] - a[1]);
+  const top1 = sortedOpex[0] || ['LUONG', 0];
+  const top2 = sortedOpex[1] || ['VP', 0];
+
+  // 5. Dữ liệu thật: Thặng dư / Thâm hụt dòng tiền kỳ này (Thu - Chi)
   const totalOutflow = mTx.filter((t) => t.dir === 'out').reduce((sum, t) => sum + t.amt, 0);
   const netCashFlow = totalInflow - totalOutflow;
 
   return (
     <div className="executive-kpi-grid">
-      {/* KPI 1: Tổng dòng tiền khả dụng */}
+      {/* KPI 1: Tổng dòng tiền khả dụng (Đọc động toàn bộ tài sản active) */}
       <div className={`kpi-card ${totalLiquid < 0 ? 'card-bad' : 'card-highlight'}`}>
         <div className="kpi-card-header">
           <span className="kpi-label">Tổng vốn khả dụng</span>
@@ -45,22 +63,24 @@ export const ExecutiveKpiCards: React.FC = () => {
           </div>
         </div>
         <div className="kpi-main-val">{fm(totalLiquid)}</div>
-        <div className="kpi-sub-breakdown">
-          <div className="kpi-sub-item">
-            <span className="sub-tag">Tiền mặt:</span>
-            <span className={`sub-num ${quy < 0 ? 'text-bad' : ''}`}>{mil(quy)}</span>
-          </div>
-          <div className="kpi-sub-divider">·</div>
-          <div className="kpi-sub-item">
-            <span className="sub-tag">ACB:</span>
-            <span className="sub-num text-good">{mil(acb)}</span>
-          </div>
+        <div className="kpi-sub-breakdown" style={{ flexWrap: 'wrap', gap: '6px' }}>
+          {accountBalances.map((item, idx) => (
+            <React.Fragment key={item.id}>
+              {idx > 0 && <div className="kpi-sub-divider">·</div>}
+              <div className="kpi-sub-item">
+                <span className="sub-tag">{item.id}:</span>
+                <span className={`sub-num ${item.bal < 0 ? 'text-bad' : 'text-good'}`}>
+                  {mil(item.bal)}
+                </span>
+              </div>
+            </React.Fragment>
+          ))}
         </div>
         <div className="kpi-footer-note">
-          {quy < 0 ? (
-            <span className="note-alert">⚠️ Quỹ mặt đang âm (chi hộ chưa hoàn ứng)</span>
+          {anyNegativeAcc ? (
+            <span className="note-alert">⚠️ {anyNegativeAcc.id} đang âm ({fm(anyNegativeAcc.bal)})</span>
           ) : (
-            <span className="note-ok">✓ Dòng tiền lưu thông an toàn</span>
+            <span className="note-ok">✓ {activeAccounts.length} quỹ/tài khoản active an toàn</span>
           )}
         </div>
       </div>
@@ -77,7 +97,7 @@ export const ExecutiveKpiCards: React.FC = () => {
         <div className="kpi-sub-breakdown">
           <span className="sub-tag">Kỳ {ui.month}</span>
           <div className="kpi-sub-divider">·</div>
-          <span className="sub-tag">{mTx.filter((t) => t.dir === 'in').length} khoản thu</span>
+          <span className="sub-tag">{inTx.length} khoản thu</span>
         </div>
         <div className="kpi-footer-note">
           <span className="note-muted">Gồm thu khách, tư vấn trả nợ & hoa hồng</span>
@@ -95,17 +115,17 @@ export const ExecutiveKpiCards: React.FC = () => {
         <div className="kpi-main-val">{fm(totalOpex)}</div>
         <div className="kpi-sub-breakdown">
           <div className="kpi-sub-item">
-            <span className="sub-tag">Lương/Thưởng:</span>
-            <span className="sub-num">{mil(opexCat.LUONG || 0)}</span>
+            <span className="sub-tag">{top1[0]}:</span>
+            <span className="sub-num">{mil(top1[1])}</span>
           </div>
           <div className="kpi-sub-divider">·</div>
           <div className="kpi-sub-item">
-            <span className="sub-tag">Mặt bằng:</span>
-            <span className="sub-num">{mil(opexCat.VP || 0)}</span>
+            <span className="sub-tag">{top2[0]}:</span>
+            <span className="sub-num">{mil(top2[1])}</span>
           </div>
         </div>
         <div className="kpi-footer-note">
-          <span className="note-muted">Chiếm 6 nhóm chi phí định kỳ văn phòng</span>
+          <span className="note-muted">Theo 6 nhóm chi phí định kỳ thực tế</span>
         </div>
       </div>
 
@@ -159,4 +179,3 @@ export const ExecutiveKpiCards: React.FC = () => {
     </div>
   );
 };
-
