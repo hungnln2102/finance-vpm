@@ -118,3 +118,76 @@
 - **Thay đổi**: Thêm khu vực tài khoản cuối rail, menu mở rộng hiển thông tin vai trò và nút `Đăng xuất`; thao tác đăng xuất cập nhật về vai trò mặc định `operator` trong phiên mô phỏng.
 - **CSS**: Thêm style cho account panel, menu logout và trạng thái responsive; không còn ẩn khu vực này trên mobile.
 - **Kiểm tra**: `npm run build` thành công; không thực hiện thao tác Sheet/DB hay xóa dữ liệu.
+
+## [21:22] Build lại dự án theo yêu cầu
+
+- **Bối cảnh**: Kiểm tra và thực thi build lại toàn bộ dự án (`npm run build`).
+- **Sự cố phát hiện & xử lý**: Môi trường ban đầu thiếu các devDependencies (`tsc`, `vite`) trong `node_modules` do trước đó chưa được cài đặt đầy đủ. Đã tiến hành chạy `npm install` bổ sung.
+- **Kết quả Build**:
+  - TypeScript (`tsc`): Biên dịch thành công 0 lỗi.
+  - Vite (`vite build`): Đóng gói hoàn tất trong 2.42s vào thư mục `dist/` (`dist/index.html`, `dist/assets/style-D2mOOIS_.css`, `dist/assets/index-BSVZy2ci.js`).
+- **Trạng thái**: Build thành công 100%, không có thay đổi mã nguồn.
+
+## [22:12] Triển khai Dropdown Biên Lai tại Sổ Giao Dịch & Khớp Nối 1 Kế Hoạch - Nhiều Giao Dịch Chi
+
+- **Phạm vi & Yêu cầu của Master**:
+  1. Hỗ trợ dropdown (accordion expand row) trên từng dòng Sổ Giao Dịch để xem danh sách chi tiết các biên lai/chứng từ đính kèm với log đó.
+  2. Xây dựng luồng match chuẩn xác giữa Kế hoạch được duyệt và Sổ Giao Dịch, giải quyết bài toán thực tế: 1 Kế hoạch có nhiều đợt chi/nhiều phân loại chi phí/nhiều biên lai khác nhau.
+- **Thay đổi Backend & Database**:
+  - `initDbService.mjs`: Bổ sung cột `proposal_id VARCHAR(32) DEFAULT ''` và `receipts JSONB DEFAULT '[]'::jsonb`, tạo index `idx_tx_proposal`.
+  - `ledgerService.mjs` & `stateService.mjs`: Cập nhật `insertTransaction`, `updateTransaction` và `getFullState` để lưu/trả về `proposalId` và `receipts`.
+  - CSDL PostgreSQL: Đã áp dụng migration an toàn và gán liên kết cho bản ghi mẫu `N0001` (khớp với Kế hoạch `PROP-02` / `KH-2026-10-02` và biên lai `BL-5800K`).
+- **Thay đổi Frontend UI/UX**:
+  - `src/types/index.ts`: Bổ sung interface `TransactionReceipt` và các trường `proposalId?: string`, `receipts?: TransactionReceipt[]`.
+  - `LedgerDataTable.tsx`: Thêm nút toggle mũi tên và thẻ biên lai; khi bấm vào dòng sẽ xổ xuống sub-table hiển thị đầy đủ: Mã biên lai, Ngày chứng từ, Đơn vị thụ hưởng/Nhà cung cấp, Nội dung chi tiết, Số tiền và nút xem chứng từ, kèm huy hiệu Kế hoạch liên kết.
+  - `TransactionModal.tsx`: Bổ sung ô chọn Kế hoạch đã duyệt (hiển thị dự toán và số dư còn lại của kế hoạch) khi tạo khoản Chi; bổ sung ô nhập mã biên lai và đơn vị thụ hưởng.
+  - `ProposalListTable.tsx`: Bổ sung tab con "Các đợt chi giải ngân" bên cạnh "Nhật ký trao đổi", hiển thị bảng thống kê tiến độ giải ngân (Dự toán duyệt vs Đã chi vs Còn lại) và chi tiết từng giao dịch chi thực tế.
+- **Kiểm thử**:
+  - `node --check` syntax backend đạt 100%.
+  - `npm run build` thành công trong 2.35s, 0 lỗi TypeScript.
+
+## [22:58] Triển khai Luồng Chưa Liệt Kê (Trừ Tiền Tài Sản Tức Thì & Khớp Nguồn Tiền) + Ẩn Input Phản Hồi Kế Hoạch
+
+- **Phạm vi & Yêu cầu của Master**:
+  1. Khi có Webhook ngân hàng hoặc biên lai trả về, mặc định **trừ tiền (hoặc cộng tiền) vào Tài sản ngay lập tức** để phản ánh đúng số dư thực tế, đồng thời đưa vào tab **"Chưa liệt kê"** do chưa xác định được mục đích chi/thu.
+  2. Trong phần **"Chưa liệt kê"**, phải có nơi để chọn khớp trực tiếp với **Kế hoạch đã duyệt** HOẶC **Chi phí khác (OPEX)** để làm rõ nguồn tiền đi đâu hoặc từ đâu.
+  3. Tại bảng trao đổi của **Kế hoạch & Đệ trình**, ẩn mặc định ô nhập phản hồi ở đáy bảng, chỉ hiện ra khi người dùng bấm nút **"Phản hồi"** trên một tin nhắn.
+
+- **Các file đã cập nhật**:
+  - [src/types/index.ts](file:///e:/Project/finance-vpm/src/types/index.ts): Mở rộng `UIState['ledgerFilter']` hỗ trợ tab `'unlisted'`.
+  - [src/context/actions/useTransactionActions.ts](file:///e:/Project/finance-vpm/src/context/actions/useTransactionActions.ts): Cập nhật `simulateWebhook` để tạo ngay giao dịch thực tế trong `state.tx` & PostgreSQL khi có webhook/biên lai mới không khớp giao dịch cũ (trừ/cộng tiền tài sản tức thì và gắn cờ `flags: ['unlisted']`).
+  - [src/features/ledger/LedgerView.tsx](file:///e:/Project/finance-vpm/src/features/ledger/LedgerView.tsx): Thêm tab `⚡ Chưa liệt kê (N)` ở vị trí đầu tiên trên thanh lọc, nút `+ Webhook / Biên lai về` để test trực tiếp, và truyền hàm `updateTransaction` xuống bảng.
+  - [src/features/ledger/components/table/LedgerDataTable.tsx](file:///e:/Project/finance-vpm/src/features/ledger/components/table/LedgerDataTable.tsx): Thêm huy hiệu `Chưa liệt kê`, nút `⚡ Khớp nguồn` và panel mở rộng trực quan cho phép chọn **Khớp Kế hoạch đã duyệt** hoặc **Chi phí khác (OPEX)** (với tiền vào hỗ trợ gán Hợp đồng). Sau khi xác nhận, giao dịch được giải trình nguồn tiền và tự động rời khỏi tab Chưa liệt kê (số dư tài sản giữ nguyên).
+  - [src/features/proposals/components/ProposalListTable.tsx](file:///e:/Project/finance-vpm/src/features/proposals/components/ProposalListTable.tsx): Bổ sung state `activeReplyProposalId`, ẩn mặc định khung phản hồi và chỉ hiển thị kèm auto-focus `@sender:` khi bấm nút `Phản hồi` (có nút `Hủy` và tự đóng sau khi gửi).
+
+- **Kiểm tra đã chạy**:
+  - `npm run build`: `tsc && vite build` biên dịch thành công 100% trong **2.42s**, **0 lỗi TypeScript**, đóng gói hoàn tất vào `dist/`.
+
+## [23:14] Loại Bỏ Khung Dropdown Mở Rộng Con Khỏi Bảng Kế Hoạch & Đệ Trình
+
+- **Yêu cầu của Master**: Loại bỏ hoàn toàn khối nội dung dropdown mở rộng (gồm thanh tiêu đề `Hồ Sơ Kế Hoạch`, 2 tab `Các đợt chi giải ngân` / `Nhật ký trao đổi`, bảng trao đổi và form phản hồi) trong bảng Kế Hoạch & Đệ Trình theo đúng ảnh chụp màn hình Master khoanh đỏ.
+- **Thay đổi kỹ thuật**:
+  - [src/features/proposals/components/ProposalListTable.tsx](file:///e:/Project/finance-vpm/src/features/proposals/components/ProposalListTable.tsx):
+    - Loại bỏ hoàn toàn `expandedRowId`, khối `isExpanded && (<tr>...</tr>)`, các tab con `subTabMap`, và khung nhập trao đổi.
+    - Loại bỏ nút mũi tên Chevron toggle ở cột Mã kế hoạch và nút `0 đợt chi · 3 chat` ở cột Thao tác.
+    - Chuẩn hóa bảng 7 cột phẳng, sạch sẽ, chuyên nghiệp: Mã kế hoạch, Tiêu đề, Nội dung, Dự toán, Đã chi, Trạng thái và Thao tác phê duyệt (Sơ duyệt/Duyệt/Từ chối).
+- **Kiểm tra đã chạy**:
+  - `npm run build`: `tsc && vite build` thành công trong **2.35s**, **0 lỗi TypeScript**, kích thước bundle giảm về 858kB.
+
+## [23:40] Khôi Phục Dropdown Thuần Túy Xem Danh Sách Biên Lai Khớp Kế Hoạch & Khởi Động Lại Backend API
+
+- **Yêu cầu của Master**: Không hiển thị phần Nhật ký trao đổi/chat rườm rà, nhưng **vẫn giữ dropdown mở rộng** dưới từng dòng Kế hoạch để xem danh sách các biên lai được match với kế hoạch đó.
+- **Root Cause (Phát hiện qua kiểm tra dữ liệu thực tế)**:
+  - Phát hiện tiến trình Node backend cũ (`PID 18628`) chưa được khởi động lại sau khi cập nhật `stateService.mjs`, dẫn tới API `/api/state` trả về giao dịch `N0001` bị thiếu `proposalId` và `receipts`, khiến cột Đã chi trên màn hình Kế hoạch hiển thị `0 đ` dù trong PostgreSQL cột `proposal_id` đã là `'PROP-02'`.
+- **Thay đổi kỹ thuật & Hạ tầng**:
+  - [src/features/proposals/components/ProposalListTable.tsx](file:///e:/Project/finance-vpm/src/features/proposals/components/ProposalListTable.tsx):
+    - Thiết kế lại dropdown thuần túy chuyên biệt cho đối soát biên lai: bấm nút mũi tên Chevron hoặc nút `N biên lai` để mở bảng **Các Biên Lai Đã Khớp Với Kế Hoạch**.
+    - Hiển thị đầy đủ: Thanh tóm tắt (Dự toán vs Đã giải ngân vs Còn lại) và bảng chi tiết từng biên lai (STT, Mã biên lai, Ngày chi, Tài khoản, Log Sổ cái, Đơn vị thụ hưởng/NCC, Nội dung chi phí, Số tiền, Trạng thái).
+    - Loại bỏ hoàn toàn phần tab `Nhật ký trao đổi` và form chat/email rườm rà.
+  - **Backend Server Restart**: Đã dừng tiến trình Node cũ (`PID 18628`) và khởi động lại `node server/index.mjs`.
+- **Kiểm tra đã chạy**:
+  - `npm run build`: `tsc && vite build` biên dịch thành công trong **2.39s**, **0 lỗi**.
+  - Kiểm chứng trực tiếp `GET http://localhost:3001/api/state`: `N0001` đã trả về chính xác `proposalId: 'PROP-02'`, `amt: 5800000` và `receipts: [{ code: 'BL-5800K', vendor: 'Nhà in Á Châu & Quà tặng VPM', ... }]`.
+
+
+

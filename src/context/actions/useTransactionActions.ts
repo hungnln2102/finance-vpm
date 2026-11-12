@@ -33,6 +33,8 @@ export function useTransactionActions({
       contract?: string;
       desc: string;
       docFile?: File | null;
+      proposalId?: string;
+      receipts?: import('../../types').TransactionReceipt[];
     }) => {
       const isLockedMonth = !!state.locks[mon(data.date)];
       if (isLockedMonth) {
@@ -53,6 +55,16 @@ export function useTransactionActions({
         initStatus = 'pending_admin';
       }
 
+      const defaultReceipts = data.receipts && data.receipts.length > 0 
+        ? data.receipts 
+        : (data.docFile ? [{
+            id: 'REC-' + nextId,
+            code: data.docFile.name,
+            amount: Math.round(data.amt),
+            date: data.date,
+            note: data.desc.trim()
+          }] : []);
+
       const newTx: Transaction = {
         id: nextId,
         date: data.date,
@@ -65,7 +77,9 @@ export function useTransactionActions({
         contract: data.contract || '',
         flags: [],
         status: initStatus,
-        doc: data.docFile ? data.docFile.name : '',
+        doc: data.docFile ? data.docFile.name : (defaultReceipts[0]?.code || ''),
+        proposalId: data.proposalId || '',
+        receipts: defaultReceipts,
         src: 'Nhập bởi ' + ROLES[ui.role]
       };
 
@@ -219,16 +233,48 @@ export function useTransactionActions({
         (t) => t.amt === amount && t.dir === dir && ['draft', 'pending_admin', 'pending'].includes(t.status)
       );
 
+      // Nếu không khớp giao dịch có sẵn: Tạo ngay giao dịch mới trừ tiền tài sản tức thì và đưa vào tab "Chưa liệt kê"
+      let createdTxItem: Transaction | null = null;
+      if (!matchTx) {
+        const nextId = 'N' + String(state.tx.length + 1).padStart(4, '0');
+        createdTxItem = {
+          id: nextId,
+          date: TODAY,
+          acc: options?.acc || 'ACB',
+          dir,
+          amt: amount,
+          desc: desc,
+          type: dir === 'out' ? 'OPEX' : 'THU_KHAC',
+          cat: '',
+          contract: '',
+          proposalId: '',
+          flags: ['unlisted'],
+          status: 'pending',
+          doc: `Biên lai ${bankTxId}`,
+          receipts: [
+            {
+              id: 'REC-' + bankTxId,
+              code: `BL-${bankTxId}`,
+              amount: amount,
+              date: TODAY,
+              vendor: dir === 'out' ? 'Đối tác chưa xác định' : 'Khách hàng ACB',
+              note: desc
+            }
+          ],
+          src: 'Webhook ACB (Biên lai số)'
+        };
+      }
+
       const newLog: BankWebhookLog = {
         id: newWebhookId,
         bankTxId,
         date: TODAY,
-        acc: 'ACB',
+        acc: (options?.acc as any) || 'ACB',
         dir,
         amount,
         description: desc,
         status: matchTx ? 'auto_matched' : 'unmatched',
-        matchedTxId: matchTx ? matchTx.id : undefined
+        matchedTxId: matchTx ? matchTx.id : (createdTxItem ? createdTxItem.id : undefined)
       };
 
       setState((prev) => {
@@ -239,11 +285,26 @@ export function useTransactionActions({
               ? {
                   ...t,
                   status: 'pending_master',
-                  doc: (t.doc ? t.doc + ', ' : '') + `Biên lai ${bankTxId}`
+                  doc: (t.doc ? t.doc + ', ' : '') + `Biên lai ${bankTxId}`,
+                  receipts: [
+                    ...(t.receipts || []),
+                    {
+                      id: 'REC-' + bankTxId,
+                      code: `BL-${bankTxId}`,
+                      amount: amount,
+                      date: TODAY,
+                      vendor: 'Ngân hàng ACB',
+                      note: desc
+                    }
+                  ]
                 }
               : t
           );
+        } else if (createdTxItem) {
+          updatedTx = [...prev.tx, createdTxItem];
+          updatedTx.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
         }
+
         return {
           ...prev,
           webhooks: [newLog, ...prev.webhooks],
@@ -251,11 +312,15 @@ export function useTransactionActions({
         };
       });
 
+      if (createdTxItem) {
+        apiClient.addTransaction(createdTxItem);
+      }
+
       addLog(`Nhận Webhook ACB ${bankTxId} (${dir === 'in' ? '+' : '-'}${fmt(amount)} đ)`);
       if (matchTx) {
         showToast(`⚡ Webhook Auto-Matched: Khớp tự động chứng từ ${matchTx.id} (${fmt(amount)} đ)!`, 'success');
       } else {
-        showToast(`⚡ Nhận biến động ACB: ${dir === 'in' ? '+' : '-'}${fmt(amount)} đ (${bankTxId})`, 'info');
+        showToast(`⚡ Nhận biên lai ${bankTxId} (${dir === 'in' ? '+' : '-'}${fmt(amount)} đ): Đã trừ tiền tài sản ACB và đưa vào Chưa liệt kê`, 'warn');
       }
     },
     [state.webhooks.length, state.tx, addLog, showToast, setState]

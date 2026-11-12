@@ -35,6 +35,8 @@ export interface AppContextType {
     contract?: string;
     desc: string;
     docFile?: File | null;
+    proposalId?: string;
+    receipts?: import('../types').TransactionReceipt[];
   }) => void;
   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
   checkTransaction: (id: string) => void;

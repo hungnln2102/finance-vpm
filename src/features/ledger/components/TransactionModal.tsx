@@ -47,6 +47,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [cat, setCat] = useState('');
   const [desc, setDesc] = useState('');
   const [docFile, setDocFile] = useState<File | null>(null);
+  const [proposalId, setProposalId] = useState(editingTx?.proposalId || '');
+  const [receiptCode, setReceiptCode] = useState('');
+  const [receiptVendor, setReceiptVendor] = useState('');
 
   useEffect(() => {
     if (editingTx) {
@@ -58,6 +61,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setCat(editingTx.cat || '');
       setDesc(editingTx.desc);
       setDocFile(null);
+      setProposalId(editingTx.proposalId || '');
+      setReceiptCode(editingTx.receipts?.[0]?.code || editingTx.doc || '');
+      setReceiptVendor(editingTx.receipts?.[0]?.vendor || '');
     } else {
       setDate(currentMonth === mon(TODAY) ? TODAY : `${currentMonth}-01`);
       setAcc(accountList[0]?.id || 'QUY');
@@ -66,6 +72,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setCat('');
       setDesc('');
       setDocFile(null);
+      setProposalId('');
+      setReceiptCode('');
+      setReceiptVendor('');
     }
   }, [editingTx, currentMonth, isOpen]);
 
@@ -97,6 +106,21 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     // Loại nghiệp vụ kế toán
     const resolvedType: TransactionType = dir === 'out' ? 'OPEX' : 'THU_KHAC';
 
+    // Tạo mảng biên lai nếu có nhập mã biên lai hoặc file
+    const resolvedDocCode = receiptCode.trim() || (docFile ? docFile.name : '') || editingTx?.doc || '';
+    const receiptsPayload = resolvedDocCode
+      ? [
+          {
+            id: editingTx?.receipts?.[0]?.id || `REC-${Date.now()}`,
+            code: resolvedDocCode,
+            amount: Number(amt),
+            date,
+            vendor: receiptVendor.trim() || (acc === 'ACB' ? 'Ngân hàng ACB (Ủy nhiệm chi)' : 'Sổ quỹ VPM'),
+            note: desc.trim()
+          }
+        ]
+      : (editingTx?.receipts || []);
+
     if (editingTx) {
       updateTransaction(editingTx.id, {
         date,
@@ -106,7 +130,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         amt: Number(amt),
         cat: dir === 'out' ? cat : '',
         contract: '',
-        desc: desc.trim()
+        desc: desc.trim(),
+        doc: resolvedDocCode,
+        proposalId: dir === 'out' ? proposalId : '',
+        receipts: receiptsPayload
       });
     } else {
       addTransaction({
@@ -118,7 +145,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         cat: dir === 'out' ? cat : '',
         contract: '',
         desc: desc.trim(),
-        docFile
+        docFile,
+        proposalId: dir === 'out' ? proposalId : '',
+        receipts: receiptsPayload
       });
     }
     onClose();
@@ -229,21 +258,58 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
               {/* 5. Nhóm chi phí: Bắt buộc chọn khi là Chi */}
               {dir === 'out' && (
-                <div className="form-group wide">
-                  <label>
-                    Nhóm chi phí <span style={{ color: 'var(--bad)', fontWeight: 700 }}>*</span>
-                  </label>
-                  <select
-                    value={cat}
-                    required
-                    onChange={(e) => setCat(e.target.value)}
-                  >
-                    <option value="">— Chọn nhóm chi phí (Bắt buộc) —</option>
-                    {Object.entries(CATS).map(([k, label]) => (
-                      <option key={k} value={k}>{label} ({k})</option>
-                    ))}
-                  </select>
-                </div>
+                <>
+                  <div className="form-group wide">
+                    <label>
+                      Nhóm chi phí <span style={{ color: 'var(--bad)', fontWeight: 700 }}>*</span>
+                    </label>
+                    <select
+                      value={cat}
+                      required
+                      onChange={(e) => setCat(e.target.value)}
+                    >
+                      <option value="">— Chọn nhóm chi phí (Bắt buộc) —</option>
+                      {Object.entries(CATS).map(([k, label]) => (
+                        <option key={k} value={k}>{label} ({k})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* 5b. Liên kết Kế Hoạch Chi Tiêu (Khớp nối 1-N) */}
+                  <div className="form-group wide">
+                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>Khớp nối Kế hoạch được duyệt (Tùy chọn)</span>
+                      <span style={{ fontSize: '11px', color: 'var(--teal)', fontWeight: 500 }}>
+                        1 Kế hoạch — Nhiều đợt chi
+                      </span>
+                    </label>
+                    <select
+                      value={proposalId}
+                      onChange={(e) => {
+                        const pid = e.target.value;
+                        setProposalId(pid);
+                        const found = (state.proposals || []).find((p) => p.id === pid);
+                        if (found && !desc.trim()) {
+                          setDesc(`Chi kế hoạch [${found.code}] - ${found.title}`);
+                        }
+                      }}
+                    >
+                      <option value="">— Chi phát sinh thông thường (Không thuộc kế hoạch) —</option>
+                      {(state.proposals || []).map((p) => {
+                        const spent = (state.tx || [])
+                          .filter((t) => t.dir === 'out' && t.id !== editingTx?.id && (t.proposalId === p.id || t.desc?.includes(p.code) || t.contract === p.code))
+                          .reduce((sum, t) => sum + (Number(t.amt) || 0), 0);
+                        const remain = Math.max(0, p.amount - spent);
+
+                        return (
+                          <option key={p.id} value={p.id}>
+                            [{p.code}] {p.title} (Dự toán: {fmt(p.amount)} đ | Còn lại: {fmt(remain)} đ)
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </>
               )}
 
               {/* 6. Diễn giải */}
@@ -260,9 +326,30 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 />
               </div>
 
-              {/* 7. Chứng từ đính kèm */}
+              {/* 7. Thông tin Biên lai chi tiết */}
+              <div className="form-group">
+                <label>Mã biên lai / Số hóa đơn</label>
+                <input
+                  type="text"
+                  placeholder="vd BL-5800K, HĐ-00129"
+                  value={receiptCode}
+                  onChange={(e) => setReceiptCode(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Đơn vị thụ hưởng / NCC</label>
+                <input
+                  type="text"
+                  placeholder="vd Nhà in Á Châu, Khách sạn Mường Thanh"
+                  value={receiptVendor}
+                  onChange={(e) => setReceiptVendor(e.target.value)}
+                />
+              </div>
+
+              {/* 8. Chứng từ đính kèm */}
               <div className="form-group wide">
-                <label>Chứng từ đính kèm (Tùy chọn)</label>
+                <label>Tệp chứng từ đính kèm (Tùy chọn)</label>
                 <input
                   type="file"
                   accept="image/*,.pdf"

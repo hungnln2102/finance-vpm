@@ -103,6 +103,16 @@ export interface AccountItem {
   status?: string;
 }
 
+export interface TransactionReceipt {
+  id: string;
+  code: string;
+  amount: number;
+  date?: string;
+  vendor?: string;
+  note?: string;
+  fileUrl?: string;
+}
+
 export interface Transaction {
   id: string;
   acc: AccountKey | string;
@@ -120,6 +130,8 @@ export interface Transaction {
   type: TransactionType;
   cat?: OpexCategory | string;
   note?: string;
+  proposalId?: string;
+  receipts?: TransactionReceipt[];
 }
 
 export type ContractKind = 'KH' | 'TV';
@@ -242,7 +254,7 @@ export interface UIState {
   role: Role;
   month: string; // YYYY-MM
   sel?: string | null;
-  ledgerFilter: 'all' | 'in' | 'out' | 'pending' | 'approve' | 'flag';
+  ledgerFilter: 'all' | 'in' | 'out' | 'pending' | 'approve' | 'flag' | 'unlisted';
   debtKind: ContractKind;
   debtOnlyOver: boolean;
   editTx: string | null;

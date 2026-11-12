@@ -34,12 +34,17 @@ export async function initDb() {
         flags TEXT[] DEFAULT ARRAY[]::TEXT[],
         doc TEXT DEFAULT '',
         src TEXT DEFAULT '',
+        proposal_id VARCHAR(32) DEFAULT '',
+        receipts JSONB DEFAULT '[]'::JSONB,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+      ALTER TABLE ${SCHEMA}.transactions ADD COLUMN IF NOT EXISTS proposal_id VARCHAR(32) DEFAULT '';
+      ALTER TABLE ${SCHEMA}.transactions ADD COLUMN IF NOT EXISTS receipts JSONB DEFAULT '[]'::JSONB;
       CREATE INDEX IF NOT EXISTS idx_tx_date ON ${SCHEMA}.transactions(date);
       CREATE INDEX IF NOT EXISTS idx_tx_acc ON ${SCHEMA}.transactions(acc);
       CREATE INDEX IF NOT EXISTS idx_tx_contract ON ${SCHEMA}.transactions(contract);
+      CREATE INDEX IF NOT EXISTS idx_tx_proposal ON ${SCHEMA}.transactions(proposal_id);
     `);
 
     // 2. Contracts

@@ -1,33 +1,40 @@
 import React, { useState } from 'react';
-import { Proposal, ProposalThread, Role } from '../../../types';
+import { Proposal, Role, Transaction } from '../../../types';
 import { fmt, dmy } from '../../../utils/formatters';
 import { ProposalStatusBadge } from './ProposalStatusBadge';
 import { 
   FileText, 
   PlusCircle, 
-  ChevronDown, 
-  ChevronUp, 
-  MessageSquare, 
-  Send, 
-  CornerDownRight, 
   CheckCircle2, 
   XCircle, 
   ShieldCheck, 
-  Eye, 
-  Reply, 
-  Clock, 
   Mail, 
-  Building 
+  Building,
+  ChevronDown,
+  ChevronUp,
+  Receipt
 } from 'lucide-react';
 
 interface ProposalListTableProps {
   proposals: Proposal[];
-  txList: any[];
+  txList: Transaction[];
   uiRole: Role;
   canReview: boolean;
   onOpenCreateModal: () => void;
   onReview: (id: string, status: 'pending_master' | 'approved' | 'rejected', comment?: string) => void;
-  onAddThread: (proposalId: string, content: string, isInbound?: boolean) => void;
+  onAddThread?: (proposalId: string, content: string, isInbound?: boolean) => void;
+}
+
+interface MatchedReceiptRow {
+  receiptId: string;
+  receiptCode: string;
+  txId: string;
+  date: string;
+  acc: string;
+  vendor: string;
+  note: string;
+  amount: number;
+  txStatus: string;
 }
 
 export const ProposalListTable: React.FC<ProposalListTableProps> = ({
@@ -36,46 +43,66 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
   uiRole,
   canReview,
   onOpenCreateModal,
-  onReview,
-  onAddThread
+  onReview
 }) => {
-  // State lưu id của các dòng đang mở dropdown (hỗ trợ mở 1 hoặc nhiều dòng)
-  const [expandedRowId, setExpandedRowId] = useState<string | null>(
-    proposals.length > 0 ? proposals[0].id : null
-  );
-
-  // State nhập nội dung phản hồi cho từng proposal
-  const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
-
-  // State mở modal xem chi tiết tin nhắn
-  const [viewingThread, setViewingThread] = useState<ProposalThread | null>(null);
+  // State lưu id của dòng kế hoạch đang mở dropdown xem các biên lai đã khớp
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
     setExpandedRowId((prev) => (prev === id ? null : id));
   };
 
-  const handleReplyChange = (id: string, text: string) => {
-    setReplyInputs((prev) => ({ ...prev, [id]: text }));
+  // Tìm tất cả các giao dịch chi thực tế trong sổ thuộc kế hoạch này (1 Kế hoạch - Nhiều Giao dịch)
+  const getMatchedTransactions = (p: Proposal): Transaction[] => {
+    return txList.filter(
+      (t) =>
+        t.dir === 'out' &&
+        (t.proposalId === p.id || (p.code && (t.desc?.includes(p.code) || t.contract === p.code)))
+    );
   };
 
-  const handleSendReply = (proposalId: string, isInbound = false) => {
-    const content = replyInputs[proposalId]?.trim();
-    if (!content) return;
-    onAddThread(proposalId, content, isInbound);
-    setReplyInputs((prev) => ({ ...prev, [proposalId]: '' }));
+  // Trích xuất toàn bộ danh sách biên lai được match với kế hoạch này
+  const getMatchedReceipts = (p: Proposal): MatchedReceiptRow[] => {
+    const matchedTx = getMatchedTransactions(p);
+    const list: MatchedReceiptRow[] = [];
+
+    for (const t of matchedTx) {
+      if (t.receipts && t.receipts.length > 0) {
+        for (const r of t.receipts) {
+          list.push({
+            receiptId: r.id || `REC-${t.id}`,
+            receiptCode: r.code || t.doc || `BL-${t.id}`,
+            txId: t.id,
+            date: r.date || t.date,
+            acc: t.acc,
+            vendor: r.vendor || (t.acc === 'ACB' ? 'Ngân hàng ACB (Ủy nhiệm chi)' : 'Sổ quỹ VPM'),
+            note: r.note || t.desc,
+            amount: r.amount || t.amt,
+            txStatus: t.status
+          });
+        }
+      } else {
+        list.push({
+          receiptId: `REC-${t.id}`,
+          receiptCode: t.doc || `BL-${t.id}`,
+          txId: t.id,
+          date: t.date,
+          acc: t.acc,
+          vendor: t.acc === 'ACB' ? 'Ngân hàng ACB (Ủy nhiệm chi)' : 'Sổ quỹ VPM',
+          note: t.desc,
+          amount: t.amt,
+          txStatus: t.status
+        });
+      }
+    }
+
+    return list;
   };
 
   // Tính số tiền đã chi thực tế theo kế hoạch
   const calculateSpentAmount = (p: Proposal): number => {
-    // 1. Tìm giao dịch chi trong sổ có diễn giải chứa mã kế hoạch
-    const spentFromTx = txList
-      .filter((t) => t.dir === 'out' && (t.desc?.includes(p.code) || (t.contract && t.contract === p.code)))
-      .reduce((sum, t) => sum + (Number(t.amt) || 0), 0);
-
-    if (spentFromTx > 0) return spentFromTx;
-
-    // 2. Nếu đã approved nhưng chưa khớp mã tx riêng, ta tạm tính theo trạng thái
-    return p.status === 'approved' ? p.amount : 0;
+    const matched = getMatchedTransactions(p);
+    return matched.reduce((sum, t) => sum + (Number(t.amt) || 0), 0);
   };
 
   return (
@@ -88,7 +115,7 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
             <span>Danh Sách Kế Hoạch & Đệ Trình Hợp Nhất</span>
           </h2>
           <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--muted)' }}>
-            Quản lý tập trung hồ sơ đề xuất, dự toán, chi phí thực tế và nhật ký trao đổi giải trình tích hợp.
+            Quản lý tập trung hồ sơ đề xuất, dự toán và đối soát danh sách các biên lai được match với từng kế hoạch.
           </p>
         </div>
 
@@ -103,13 +130,13 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
         </button>
       </div>
 
-      {/* Main Table: 7 Cột Chuẩn Theo Yêu Cầu Của Master */}
+      {/* Main Table: 7 Cột + Dropdown Danh Sách Biên Lai Đã Match */}
       <div className="table-scroll">
         <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ backgroundColor: 'var(--panel-2)', borderBottom: '1px solid var(--line)' }}>
-              <th style={{ width: '130px' }}>Mã kế hoạch</th>
-              <th style={{ width: '220px' }}>Tiêu đề kế hoạch</th>
+              <th style={{ width: '140px' }}>Mã kế hoạch</th>
+              <th style={{ width: '240px' }}>Tiêu đề kế hoạch</th>
               <th>Nội dung kế hoạch</th>
               <th className="num" style={{ width: '130px' }}>Dự toán</th>
               <th className="num" style={{ width: '130px' }}>Đã chi</th>
@@ -120,22 +147,24 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
           <tbody>
             {proposals.map((p) => {
               const isExpanded = expandedRowId === p.id;
+              const matchedReceipts = getMatchedReceipts(p);
               const spent = calculateSpentAmount(p);
-              const threadList = p.threads || [];
+              const remainBudget = Math.max(0, p.amount - spent);
+              const percent = p.amount > 0 ? Math.min(100, Math.round((spent / p.amount) * 100)) : 0;
 
               return (
                 <React.Fragment key={p.id}>
-                  {/* Dòng Chính (Master Row) */}
+                  {/* Dòng Chính Kế Hoạch */}
                   <tr
                     onClick={() => toggleExpand(p.id)}
                     style={{
                       borderBottom: isExpanded ? 'none' : '1px solid var(--line)',
-                      backgroundColor: isExpanded ? 'rgba(59, 130, 246, 0.05)' : undefined,
+                      backgroundColor: isExpanded ? 'rgba(20, 184, 166, 0.05)' : undefined,
                       cursor: 'pointer',
                       transition: 'background-color 0.15s ease'
                     }}
                   >
-                    {/* Cột 1: Mã */}
+                    {/* Cột 1: Mã & Nút Toggle Dropdown */}
                     <td style={{ verticalAlign: 'top', paddingTop: '14px', paddingBottom: '14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <button
@@ -145,8 +174,8 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
                             toggleExpand(p.id);
                           }}
                           className="btn btn-ghost btn-xs"
-                          style={{ padding: '2px 4px', color: isExpanded ? '#3b82f6' : 'var(--muted)' }}
-                          title={isExpanded ? 'Thu gọn nhật ký' : 'Bấm mở nhật ký trao đổi'}
+                          style={{ padding: '2px 4px', color: isExpanded ? 'var(--teal)' : 'var(--muted)' }}
+                          title={isExpanded ? 'Thu gọn danh sách biên lai' : 'Bấm để xem các biên lai đã khớp'}
                         >
                           {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                         </button>
@@ -154,14 +183,14 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
                           {p.code}
                         </span>
                       </div>
-                      <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px', paddingLeft: '22px' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px', paddingLeft: '24px' }}>
                         {dmy(p.date)}
                       </div>
                     </td>
 
                     {/* Cột 2: Tiêu đề */}
                     <td style={{ verticalAlign: 'top', paddingTop: '14px', paddingBottom: '14px' }}>
-                      <div style={{ fontWeight: 600, color: isExpanded ? '#2563eb' : 'var(--ink)', fontSize: '13.5px' }}>
+                      <div style={{ fontWeight: 600, color: isExpanded ? 'var(--teal)' : 'var(--ink)', fontSize: '13.5px' }}>
                         {p.title}
                       </div>
                       <div style={{ fontSize: '11.5px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px' }}>
@@ -197,10 +226,9 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
                       <ProposalStatusBadge status={p.status} />
                     </td>
 
-                    {/* Cột 7: Thao tác */}
+                    {/* Cột 7: Thao tác & Nút Xem Biên Lai */}
                     <td style={{ verticalAlign: 'top', paddingTop: '14px', paddingBottom: '14px', textAlign: 'center' }}>
                       <div style={{ display: 'inline-flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
-                        {/* Nút Toggle Trao Đổi */}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -211,19 +239,23 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '4px',
-                            color: isExpanded ? '#2563eb' : 'var(--teal)',
+                            gap: '5px',
+                            color: matchedReceipts.length > 0 ? 'var(--teal)' : 'var(--muted)',
+                            backgroundColor: isExpanded ? 'rgba(20, 184, 166, 0.14)' : 'rgba(20, 184, 166, 0.06)',
+                            border: '1px solid rgba(20, 184, 166, 0.25)',
+                            borderRadius: '4px',
                             fontSize: '11.5px',
                             fontWeight: 600,
                             padding: '3px 8px'
                           }}
+                          title="Bấm xem các biên lai được khớp với kế hoạch này"
                         >
-                          <MessageSquare size={13} />
-                          <span>Trao đổi ({threadList.length})</span>
+                          <Receipt size={13} />
+                          <span>{matchedReceipts.length} biên lai</span>
                           {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                         </button>
 
-                        {/* Thao tác Phê duyệt nhanh nếu có quyền */}
+                        {/* Thao tác Phê duyệt nhanh cho Admin */}
                         {canReview && p.status === 'pending_admin' && (
                           <div style={{ display: 'flex', gap: '4px' }}>
                             <button
@@ -254,6 +286,7 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
                           </div>
                         )}
 
+                        {/* Thao tác Phê duyệt cho Master */}
                         {(uiRole === 'master' || uiRole === 'giau') && p.status !== 'approved' && (
                           <div style={{ display: 'flex', gap: '4px' }}>
                             <button
@@ -293,182 +326,123 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
                     </td>
                   </tr>
 
-                  {/* Dòng Mở Rộng Dropdown: Nhật Ký Trao Đổi Chi Tiết Chuẩn Theo Mẫu Ảnh */}
+                  {/* Dòng Mở Rộng Dropdown: Chỉ Hiển Thị Danh Sách Các Biên Lai Được Match Với Kế Hoạch Này */}
                   {isExpanded && (
-                    <tr style={{ borderBottom: '1px solid var(--line)', backgroundColor: 'rgba(59, 130, 246, 0.02)' }}>
-                      <td colSpan={7} style={{ padding: 0 }}>
+                    <tr style={{ backgroundColor: 'rgba(20, 184, 166, 0.02)', borderBottom: '1px solid var(--line)' }}>
+                      <td colSpan={7} style={{ padding: '0 0 16px 0' }}>
                         <div
                           style={{
-                            margin: '8px 14px 16px 20px',
+                            margin: '8px 14px 4px 20px',
                             padding: '16px 20px',
                             backgroundColor: 'var(--panel-2)',
                             borderRadius: '8px',
-                            borderLeft: '4px solid #3b82f6', // Viền xanh dọc bên trái chuẩn 1-1 ảnh mẫu
-                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+                            borderLeft: '4px solid var(--teal)',
+                            boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)'
                           }}
                         >
-                          {/* Banner Tiêu Đề Của Bảng Con */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          {/* Header Dropdown: Tên kế hoạch & Thanh Thống Kê Tiến Độ Giải Ngân */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '12px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <MessageSquare size={16} style={{ color: '#3b82f6' }} />
-                              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ink)' }}>
-                                Nhật Ký Trao Đổi & Giải Trình Email (Inbound Threading) — [{p.code}] {p.title}
+                              <Receipt size={16} style={{ color: 'var(--teal)' }} />
+                              <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--ink)' }}>
+                                Các Biên Lai Đã Khớp Với Kế Hoạch [{p.code}]
+                              </span>
+                              <span style={{ fontSize: '11px', color: 'var(--teal)', backgroundColor: 'var(--teal-soft)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                                {matchedReceipts.length} biên lai
                               </span>
                             </div>
 
-                            {p.resendSentAt && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: '#c2410c', backgroundColor: 'rgba(249, 115, 22, 0.08)', padding: '2px 8px', borderRadius: '4px' }}>
-                                <Mail size={12} />
-                                <span>Resend Auto-CC: {p.resendSentAt}</span>
+                            {/* Chỉ số Tóm tắt Ngân Sách */}
+                            <div style={{ display: 'flex', gap: '18px', fontSize: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <div>
+                                <span style={{ color: 'var(--muted)' }}>Dự toán: </span>
+                                <b style={{ color: 'var(--ochre)', fontFamily: 'var(--f-num)' }}>{fmt(p.amount)} đ</b>
                               </div>
-                            )}
+                              <div>
+                                <span style={{ color: 'var(--muted)' }}>Đã giải ngân: </span>
+                                <b style={{ color: spent > 0 ? 'var(--good)' : 'var(--muted)', fontFamily: 'var(--f-num)' }}>
+                                  {fmt(spent)} đ ({percent}%)
+                                </b>
+                              </div>
+                              <div>
+                                <span style={{ color: 'var(--muted)' }}>Còn lại: </span>
+                                <b style={{ color: 'var(--teal)', fontFamily: 'var(--f-num)' }}>{fmt(remainBudget)} đ</b>
+                              </div>
+                            </div>
                           </div>
 
-                          {/* Bảng Con 6 Cột Đúng Theo Yêu Cầu Của Master */}
-                          <div style={{ overflowX: 'auto', marginBottom: '14px' }}>
-                            <table style={{ width: '100%', fontSize: '12.5px', borderCollapse: 'collapse', backgroundColor: 'var(--bg)', borderRadius: '6px', overflow: 'hidden' }}>
+                          {/* Bảng Danh Sách Biên Lai Đã Match */}
+                          <div style={{ overflowX: 'auto', borderRadius: '6px', border: '1px solid var(--line)' }}>
+                            <table style={{ width: '100%', fontSize: '12.5px', borderCollapse: 'collapse', backgroundColor: 'var(--bg)' }}>
                               <thead>
-                                <tr style={{ backgroundColor: 'rgba(59, 130, 246, 0.08)', borderBottom: '1px solid var(--line)' }}>
-                                  <th style={{ width: '50px', textAlign: 'center', padding: '8px 6px' }}>STT</th>
-                                  <th style={{ width: '130px', padding: '8px 10px' }}>Ngày</th>
-                                  <th style={{ width: '180px', padding: '8px 10px' }}>Tiêu đề</th>
-                                  <th style={{ padding: '8px 10px' }}>Nội dung trao đổi</th>
-                                  <th style={{ width: '160px', padding: '8px 10px' }}>Người gửi</th>
-                                  <th style={{ width: '130px', textAlign: 'center', padding: '8px 10px' }}>Thao tác</th>
+                                <tr style={{ backgroundColor: 'rgba(20, 184, 166, 0.08)', borderBottom: '1px solid var(--line)' }}>
+                                  <th style={{ width: '45px', textAlign: 'center', padding: '8px 6px' }}>STT</th>
+                                  <th style={{ width: '150px', padding: '8px 10px' }}>Mã biên lai</th>
+                                  <th style={{ width: '100px', padding: '8px 10px' }}>Ngày chi</th>
+                                  <th style={{ width: '90px', padding: '8px 10px' }}>Tài khoản</th>
+                                  <th style={{ width: '90px', padding: '8px 10px' }}>Log Sổ cái</th>
+                                  <th style={{ width: '200px', padding: '8px 10px' }}>Đơn vị thụ hưởng / NCC</th>
+                                  <th style={{ padding: '8px 10px' }}>Nội dung chi phí</th>
+                                  <th className="num" style={{ width: '130px', padding: '8px 10px' }}>Số tiền</th>
+                                  <th style={{ width: '100px', textAlign: 'center', padding: '8px 10px' }}>Trạng thái</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {threadList.map((th, tIdx) => {
-                                  const threadSubject = th.isInboundReply 
-                                    ? `Re: [${p.code}] Giải trình kế hoạch`
-                                    : `Chỉ đạo [${p.code}]`;
+                                {matchedReceipts.map((rec, idx) => (
+                                  <tr key={`${rec.receiptId}-${idx}`} style={{ borderBottom: '1px solid var(--line)' }}>
+                                    <td style={{ textAlign: 'center', padding: '8px 6px', color: 'var(--muted)', fontWeight: 600 }}>
+                                      {idx + 1}
+                                    </td>
+                                    <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--teal)', fontFamily: 'var(--f-num)' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                        <FileText size={12} />
+                                        <span>{rec.receiptCode}</span>
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '8px 10px', fontFamily: 'var(--f-num)', whiteSpace: 'nowrap' }}>
+                                      {dmy(rec.date)}
+                                    </td>
+                                    <td style={{ padding: '8px 10px' }}>
+                                      <span className="chip">{rec.acc}</span>
+                                    </td>
+                                    <td style={{ padding: '8px 10px', fontFamily: 'var(--f-num)', color: 'var(--muted)', fontSize: '11.5px' }}>
+                                      {rec.txId}
+                                    </td>
+                                    <td style={{ padding: '8px 10px', color: 'var(--ink)' }}>
+                                      {rec.vendor}
+                                    </td>
+                                    <td style={{ padding: '8px 10px', color: 'var(--ink)', lineHeight: 1.4 }}>
+                                      {rec.note}
+                                    </td>
+                                    <td className="num" style={{ padding: '8px 10px', fontWeight: 700, color: 'var(--bad)', fontFamily: 'var(--f-num)' }}>
+                                      {fmt(rec.amount)} đ
+                                    </td>
+                                    <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                                      <span
+                                        style={{
+                                          fontSize: '11px',
+                                          padding: '2px 7px',
+                                          borderRadius: '4px',
+                                          backgroundColor: rec.txStatus === 'posted' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                                          color: rec.txStatus === 'posted' ? 'var(--good)' : 'var(--ochre)',
+                                          fontWeight: 600
+                                        }}
+                                      >
+                                        {rec.txStatus === 'posted' ? 'Đã chốt sổ' : 'Chờ xử lý'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
 
-                                  return (
-                                    <tr 
-                                      key={th.id} 
-                                      style={{ 
-                                        borderBottom: '1px solid var(--line)',
-                                        backgroundColor: th.isInboundReply ? 'rgba(59, 130, 246, 0.04)' : undefined 
-                                      }}
-                                    >
-                                      {/* Cột 1: STT */}
-                                      <td style={{ textAlign: 'center', padding: '8px 6px', color: 'var(--muted)', fontWeight: 600 }}>
-                                        {tIdx + 1}
-                                      </td>
-
-                                      {/* Cột 2: Ngày */}
-                                      <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', fontFamily: 'var(--f-num)', color: 'var(--ink)' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                          <Clock size={11} style={{ opacity: 0.6 }} />
-                                          <span>{th.createdAt}</span>
-                                        </div>
-                                      </td>
-
-                                      {/* Cột 3: Tiêu đề */}
-                                      <td style={{ padding: '8px 10px', fontWeight: 600, color: th.isInboundReply ? '#2563eb' : 'var(--ink)' }}>
-                                        {threadSubject}
-                                      </td>
-
-                                      {/* Cột 4: Nội dung */}
-                                      <td style={{ padding: '8px 10px', color: 'var(--ink)', lineHeight: 1.4 }}>
-                                        {th.content}
-                                      </td>
-
-                                      {/* Cột 5: Người gửi */}
-                                      <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                                        <div style={{ fontWeight: 600, color: th.isInboundReply ? '#2563eb' : 'var(--teal)' }}>
-                                          {th.sender}
-                                        </div>
-                                        <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
-                                          {th.isInboundReply ? '✉️ Email Inbound' : `Vai trò: ${th.role}`}
-                                        </div>
-                                      </td>
-
-                                      {/* Cột 6: Thao tác (Xem, Phản hồi) */}
-                                      <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                                        <div style={{ display: 'inline-flex', gap: '4px' }}>
-                                          <button
-                                            type="button"
-                                            onClick={() => setViewingThread(th)}
-                                            className="btn btn-ghost xs"
-                                            style={{ padding: '3px 6px', display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px' }}
-                                            title="Xem toàn văn nội dung trao đổi"
-                                          >
-                                            <Eye size={12} />
-                                            <span>Xem</span>
-                                          </button>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              const currentVal = replyInputs[p.id] || '';
-                                              handleReplyChange(p.id, currentVal ? `${currentVal} ` : `@${th.sender}: `);
-                                            }}
-                                            className="btn btn-ghost xs"
-                                            style={{ padding: '3px 6px', display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', color: '#2563eb' }}
-                                            title="Bấm để trả lời nhanh người gửi này"
-                                          >
-                                            <Reply size={12} />
-                                            <span>Phản hồi</span>
-                                          </button>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-
-                                {threadList.length === 0 && (
+                                {matchedReceipts.length === 0 && (
                                   <tr>
-                                    <td colSpan={6} style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)' }}>
-                                      Chưa có nhật ký trao đổi nào cho kế hoạch này. Hãy nhập phản hồi bên dưới.
+                                    <td colSpan={9} style={{ textAlign: 'center', padding: '20px', color: 'var(--muted)' }}>
+                                      Chưa có biên lai nào được match với kế hoạch này. Hãy vào <b>Sổ giao dịch gốc &gt; Chưa liệt kê</b> để chọn khớp biên lai vào kế hoạch này.
                                     </td>
                                   </tr>
                                 )}
                               </tbody>
                             </table>
-                          </div>
-
-                          {/* Khung Gửi Phản Hồi / Chỉ Đạo Trực Tiếp Tại Chỗ */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: 'var(--bg)', padding: '12px', borderRadius: '6px', border: '1px solid var(--line)' }}>
-                            <textarea
-                              rows={2}
-                              placeholder="Nhập nội dung phản hồi, giải trình hoặc chỉ đạo giải ngân..."
-                              value={replyInputs[p.id] || ''}
-                              onChange={(e) => handleReplyChange(p.id, e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px 10px',
-                                fontSize: '12.5px',
-                                borderRadius: '4px',
-                                border: '1px solid var(--border)',
-                                background: 'var(--panel-2)',
-                                color: 'var(--fg)',
-                                resize: 'none'
-                              }}
-                            />
-
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                              <button
-                                type="button"
-                                className="btn xs"
-                                onClick={() => handleSendReply(p.id, true)}
-                                title="Giả lập nhân viên nhận email qua Resend và bấm Reply giải trình trực tiếp"
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#2563eb' }}
-                              >
-                                <CornerDownRight size={12} />
-                                <span>Giả lập Inbound Reply (Email)</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                className="btn xs primary"
-                                onClick={() => handleSendReply(p.id, false)}
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                              >
-                                <Send size={12} />
-                                <span>Gửi phản hồi</span>
-                              </button>
-                            </div>
                           </div>
                         </div>
                       </td>
@@ -488,85 +462,6 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
           </tbody>
         </table>
       </div>
-
-      {/* Modal Popup Xem Chi Tiết Tin Nhắn / Email Trao Đổi */}
-      {viewingThread && (
-        <div 
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.65)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            backdropFilter: 'blur(3px)'
-          }}
-          onClick={() => setViewingThread(null)}
-        >
-          <div 
-            className="card-box" 
-            style={{ 
-              width: '500px', 
-              maxWidth: '92vw', 
-              padding: '24px', 
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
-              boxShadow: 'var(--shadow-lg)'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--line)', paddingBottom: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Eye size={18} style={{ color: '#3b82f6' }} />
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>
-                  Chi Tiết Nhật Ký Trao Đổi
-                </h3>
-              </div>
-              <button 
-                type="button" 
-                onClick={() => setViewingThread(null)}
-                className="btn btn-ghost btn-sm"
-                style={{ padding: '2px 6px', fontSize: '16px', color: 'var(--muted)' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
-              <div>
-                <span style={{ color: 'var(--muted)', fontSize: '12px' }}>Người gửi: </span>
-                <b style={{ color: viewingThread.isInboundReply ? '#2563eb' : 'var(--teal)' }}>{viewingThread.sender}</b>
-                <span style={{ fontSize: '11.5px', color: 'var(--muted)', marginLeft: '6px' }}>
-                  ({viewingThread.isInboundReply ? '✉️ Phản hồi qua Email Inbound' : `Vai trò: ${viewingThread.role}`})
-                </span>
-              </div>
-
-              <div>
-                <span style={{ color: 'var(--muted)', fontSize: '12px' }}>Thời gian: </span>
-                <span style={{ fontFamily: 'var(--f-num)' }}>{viewingThread.createdAt}</span>
-              </div>
-
-              <div style={{ borderTop: '1px solid var(--line)', paddingTop: '10px' }}>
-                <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '4px' }}>Nội dung chi tiết:</div>
-                <div style={{ padding: '12px', backgroundColor: 'var(--panel-2)', borderRadius: '6px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                  {viewingThread.content}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-              <button
-                type="button"
-                className="btn primary sm"
-                onClick={() => setViewingThread(null)}
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </section>
   );
 };

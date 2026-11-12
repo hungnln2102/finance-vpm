@@ -13,7 +13,8 @@ import {
   FileText,
   Lock,
   Landmark,
-  Briefcase
+  Briefcase,
+  Zap
 } from 'lucide-react';
 
 export const LedgerView: React.FC = () => {
@@ -22,7 +23,9 @@ export const LedgerView: React.FC = () => {
     ui, 
     canDo, 
     setLedgerFilter, 
-    setEditTx
+    setEditTx,
+    updateTransaction,
+    simulateWebhook
   } = useApp();
 
   const m = ui.month;
@@ -43,12 +46,25 @@ export const LedgerView: React.FC = () => {
     return true;
   });
 
-  // 2. Filter by All / In / Out
+  // Kiểm tra điều kiện "chưa liệt kê": Có cờ unlisted hoặc chưa có proposalId và chưa có cat/contract
+  const isUnlistedTx = (t: import('../../types').Transaction) => {
+    return (
+      (t.flags && t.flags.includes('unlisted')) ||
+      (t.dir === 'out' && !t.proposalId && !t.cat && t.status !== 'migrated') ||
+      (t.dir === 'in' && !t.contract && t.type === 'THU_KH' && t.status !== 'migrated')
+    );
+  };
+
+  const countUnlisted = baseRows.filter(isUnlistedTx).length;
+
+  // 2. Filter by All / In / Out / Unlisted
   let rows = baseRows;
   if (f === 'in') {
     rows = baseRows.filter((t) => t.dir === 'in');
   } else if (f === 'out') {
     rows = baseRows.filter((t) => t.dir === 'out');
+  } else if (f === 'unlisted') {
+    rows = baseRows.filter(isUnlistedTx);
   }
 
   // Counts & Totals for KPI cards & Tabs
@@ -185,7 +201,9 @@ export const LedgerView: React.FC = () => {
               <div>
                 <h2 className="card-title">
                   <span>
-                    {f === 'in'
+                    {f === 'unlisted'
+                      ? 'Giao dịch Chưa Liệt Kê (Chờ khớp Kế hoạch / OPEX)'
+                      : f === 'in'
                       ? 'Giao dịch thu tiền'
                       : f === 'out'
                       ? 'Giao dịch chi tiền'
@@ -203,7 +221,20 @@ export const LedgerView: React.FC = () => {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   <button
                     type="button"
-                    className={`btn xs ${f === 'all' || !['in', 'out'].includes(f) ? 'primary' : ''}`}
+                    className={`btn xs ${f === 'unlisted' ? 'primary' : ''}`}
+                    onClick={() => setLedgerFilter('unlisted')}
+                    style={
+                      f === 'unlisted'
+                        ? { backgroundColor: '#ea580c', borderColor: '#ea580c', color: '#fff', fontWeight: 600 }
+                        : { borderColor: countUnlisted > 0 ? '#ea580c' : undefined, color: countUnlisted > 0 ? '#ea580c' : 'var(--muted)', fontWeight: countUnlisted > 0 ? 600 : 400 }
+                    }
+                    title="Các giao dịch đã trừ/cộng tiền tài sản nhưng chưa làm rõ nguồn tiền (chưa khớp Kế hoạch hoặc Chi phí khác)"
+                  >
+                    ⚡ Chưa liệt kê ({countUnlisted})
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn xs ${f === 'all' || !['in', 'out', 'unlisted'].includes(f) ? 'primary' : ''}`}
                     onClick={() => setLedgerFilter('all')}
                   >
                     Tất cả ({countAll})
@@ -223,6 +254,25 @@ export const LedgerView: React.FC = () => {
                     Chi ({countOut})
                   </button>
                 </div>
+
+                {/* Nút Giả lập Webhook/Biên lai ACB về trừ tiền ngay vào tài sản */}
+                <button
+                  type="button"
+                  className="btn xs"
+                  onClick={() => simulateWebhook()}
+                  title="Nhận một biên lai ngân hàng ACB mới: Tiền bị trừ/cộng ngay vào tài sản và giao dịch nằm trong Chưa liệt kê"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    color: '#ea580c',
+                    borderColor: 'rgba(234, 88, 12, 0.4)',
+                    background: 'rgba(234, 88, 12, 0.06)'
+                  }}
+                >
+                  <Zap size={13} />
+                  <span>+ Webhook / Biên lai về</span>
+                </button>
 
                 {canDo('add') && (
                   <button
@@ -252,7 +302,10 @@ export const LedgerView: React.FC = () => {
               editTxId={ui.editTx}
               canEdit={canDo('edit')}
               locked={locked}
+              proposals={state.proposals}
+              isUnlistedTab={f === 'unlisted'}
               onEditTx={setEditTx}
+              onUpdateTx={updateTransaction}
             />
 
             {/* Pagination Component */}

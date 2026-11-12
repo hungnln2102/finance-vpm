@@ -10,7 +10,8 @@ export async function getFullState() {
     // 1. Transactions
     const txRes = await client.query(`
       SELECT id, to_char(date, 'YYYY-MM-DD') as date, acc, dir, amt::float as amt, 
-             description as "desc", type, cat, contract, status, flags, doc, src 
+             description as "desc", type, cat, contract, status, flags, doc, src,
+             proposal_id as "proposalId", receipts 
       FROM ${tableName(TABLES.TRANSACTIONS)} 
       ORDER BY date ASC, id ASC;
     `);

@@ -253,6 +253,17 @@ export const SEED_DATA: SeedData = {
       "flags": [],
       "status": "posted",
       "doc": "Biên lai BL-5800K",
+      "proposalId": "PROP-02",
+      "receipts": [
+        {
+          "id": "BL-5800K-01",
+          "code": "BL-5800K",
+          "amount": 5800000,
+          "date": "2026-11-11",
+          "vendor": "Nhà in Á Châu & Quà tặng VPM",
+          "note": "Thanh toán in 200 brochure Sales Kit và đồng phục"
+        }
+      ],
       "src": "Master Test"
     }
   ],

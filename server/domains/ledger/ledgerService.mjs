@@ -6,14 +6,16 @@ import { tableName, TABLES } from '../../config/dbSchema.mjs';
  */
 export async function insertTransaction(tx) {
   const query = `
-    INSERT INTO ${tableName(TABLES.TRANSACTIONS)} (id, date, acc, dir, amt, description, type, cat, contract, status, flags, doc, src)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    INSERT INTO ${tableName(TABLES.TRANSACTIONS)} (id, date, acc, dir, amt, description, type, cat, contract, status, flags, doc, src, proposal_id, receipts)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
     RETURNING id, to_char(date, 'YYYY-MM-DD') as date, acc, dir, amt::float as amt, 
-              description as desc, type, cat, contract, status, flags, doc, src;
+              description as desc, type, cat, contract, status, flags, doc, src,
+              proposal_id as "proposalId", receipts;
   `;
   const values = [
     tx.id, tx.date, tx.acc, tx.dir, tx.amt, tx.desc || '', tx.type || '', tx.cat || '',
-    tx.contract || '', tx.status || 'posted', tx.flags || [], tx.doc || '', tx.src || 'Nhập từ Web'
+    tx.contract || '', tx.status || 'posted', tx.flags || [], tx.doc || '', tx.src || 'Nhập từ Web',
+    tx.proposalId || tx.proposal_id || '', JSON.stringify(tx.receipts || [])
   ];
   const res = await pool.query(query, values);
   return res.rows[0];
@@ -37,6 +39,14 @@ export async function updateTransaction(id, updates) {
   if (updates.contract !== undefined) { fields.push(`contract = $${idx++}`); values.push(updates.contract); }
   if (updates.status !== undefined) { fields.push(`status = $${idx++}`); values.push(updates.status); }
   if (updates.doc !== undefined) { fields.push(`doc = $${idx++}`); values.push(updates.doc); }
+  if (updates.proposalId !== undefined || updates.proposal_id !== undefined) {
+    fields.push(`proposal_id = $${idx++}`);
+    values.push(updates.proposalId ?? updates.proposal_id ?? '');
+  }
+  if (updates.receipts !== undefined) {
+    fields.push(`receipts = $${idx++}`);
+    values.push(JSON.stringify(updates.receipts || []));
+  }
 
   if (fields.length === 0) return null;
 
@@ -48,7 +58,8 @@ export async function updateTransaction(id, updates) {
     SET ${fields.join(', ')} 
     WHERE id = $${idx} 
     RETURNING id, to_char(date, 'YYYY-MM-DD') as date, acc, dir, amt::float as amt, 
-              description as desc, type, cat, contract, status, flags, doc, src;
+              description as desc, type, cat, contract, status, flags, doc, src,
+              proposal_id as "proposalId", receipts;
   `;
   const res = await pool.query(query, values);
   return res.rows[0];
