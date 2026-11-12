@@ -23,7 +23,7 @@ router.patch('/accounts/:id/status', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Trạng thái status không hợp lệ' });
     }
     const updated = await toggleAccountStatus(id, status);
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'accounts',
       action: 'UPDATE',
       id,
@@ -45,7 +45,7 @@ router.post('/accounts', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Dữ liệu tài khoản không hợp lệ' });
     }
     const saved = await upsertAccount(acc);
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'accounts',
       action: 'UPDATE',
       id: saved.id,
@@ -64,7 +64,7 @@ router.delete('/accounts/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const deleted = await deleteAccount(id);
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'accounts',
       action: 'DELETE',
       id,

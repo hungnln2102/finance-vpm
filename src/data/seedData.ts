@@ -244,6 +244,8 @@ export const SEED_DATA: SeedData = {
       "acc": "ACB",
       "dir": "out",
       "amt": 5800000,
+      "paidAmt": 5800000,
+      "totalAmt": 5800000,
       "desc": "Chi phí văn phòng - Thanh toán biên lai chi tiền",
       "type": "OPEX",
       "cat": "VP",

@@ -13,8 +13,10 @@ export async function importSheetDataToPostgres(sheetData) {
   return withTransaction(async (client) => {
     let insertedTx = 0;
     let updatedTx = 0;
+    let deletedTx = 0;
     let insertedContracts = 0;
     let updatedContracts = 0;
+    const importedTxIds = new Set();
 
     const maxIdRes = await client.query(`
       SELECT id FROM ${tableName(TABLES.TRANSACTIONS)} 
@@ -32,6 +34,7 @@ export async function importSheetDataToPostgres(sheetData) {
       if (!txId) {
         txId = `G${String(nextNum++).padStart(4, '0')}`;
       }
+      importedTxIds.add(txId);
 
       const txDate = t.date || new Date().toISOString().substring(0, 10);
       const acc = t.acc || 'QUY';
@@ -66,6 +69,13 @@ export async function importSheetDataToPostgres(sheetData) {
         insertedTx++;
       }
     }
+
+    const staleTxRes = await client.query(`
+      DELETE FROM ${tableName(TABLES.TRANSACTIONS)}
+      WHERE NOT (id = ANY($1::text[]))
+      RETURNING id;
+    `, [Array.from(importedTxIds)]);
+    deletedTx = staleTxRes.rowCount;
 
     if (Array.isArray(sheetData.contracts)) {
       for (const c of sheetData.contracts) {
@@ -108,6 +118,7 @@ export async function importSheetDataToPostgres(sheetData) {
       success: true,
       insertedTx,
       updatedTx,
+      deletedTx,
       totalTx: sheetData.tx.length,
       insertedContracts,
       updatedContracts,

@@ -9,7 +9,7 @@ router.post('/proposals', async (req, res) => {
     const p = req.body;
     const saved = await upsertProposal(p);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'proposals',
       action: 'CREATE',
       id: saved.id,
@@ -31,7 +31,7 @@ router.put('/proposals/:id', async (req, res) => {
     const p = { ...req.body, id };
     const saved = await upsertProposal(p);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'proposals',
       action: 'UPDATE',
       id,
@@ -52,7 +52,7 @@ router.delete('/proposals/:id', async (req, res) => {
     const { id } = req.params;
     const deleted = await deleteProposal(id);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'proposals',
       action: 'DELETE',
       id,

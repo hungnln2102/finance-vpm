@@ -9,7 +9,7 @@ router.post('/gifts/movements', async (req, res) => {
     const mv = req.body;
     const saved = await insertGiftMovement(mv);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'gifts',
       action: 'CREATE',
       id: String(saved.id),

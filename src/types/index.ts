@@ -114,6 +114,8 @@ export interface Transaction {
   date: string; // YYYY-MM-DD
   dir: Direction;
   amt: number;
+  paidAmt?: number;
+  totalAmt?: number;
   desc: string;
   type: TransactionType;
   cat?: OpexCategory | string;

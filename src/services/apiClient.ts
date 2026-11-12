@@ -283,6 +283,7 @@ export const apiClient = {
     success: boolean;
     insertedTx?: number;
     updatedTx?: number;
+    deletedTx?: number;
     totalTx?: number;
     insertedContracts?: number;
     updatedContracts?: number;

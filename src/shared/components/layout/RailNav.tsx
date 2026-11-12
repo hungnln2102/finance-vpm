@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../../context/useApp';
-import { apiClient } from '../../../services/apiClient';
 import { ActiveTab } from '../../../types';
+import { ROLE_DEFINITIONS } from '../../../data/constants';
 import { 
   LayoutDashboard, 
   BookOpen, 
@@ -10,9 +10,11 @@ import {
   Users, 
   BarChart3, 
   Lock,
-  RotateCcw,
   Send,
-  Target
+  Target,
+  UserCheck,
+  LogOut,
+  ChevronUp
 } from 'lucide-react';
 import { detectAllIssues } from '../../../services/financeService';
 import { TODAY } from '../../../data/constants';
@@ -24,42 +26,8 @@ interface NavItemConfig {
 }
 
 export const RailNav: React.FC = () => {
-  const { state, ui, setView, resetData } = useApp();
-  const [resetArmed, setResetArmed] = useState(false);
-  const [dbStatus, setDbStatus] = useState<{ connected: boolean; info: string }>({
-    connected: false,
-    info: 'Đang kiểm tra kết nối...'
-  });
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    let cancelled = false;
-
-    const check = () => {
-      apiClient.checkHealth().then((res) => {
-        if (cancelled) return;
-        if (res && res.status === 'ok') {
-          setDbStatus({
-            connected: true,
-            info: 'PostgreSQL 16 (finance_vpm)'
-          });
-        } else {
-          setDbStatus({
-            connected: false,
-            info: 'Cục bộ (LocalStorage fallback)'
-          });
-          timer = setTimeout(check, 3000);
-        }
-      });
-    };
-
-    check();
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, []);
+  const { state, ui, setView, setRole, showToast } = useApp();
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   const navItems: NavItemConfig[] = [
     { id: 'overview', label: 'Tổng quan', icon: <LayoutDashboard size={18} /> },
@@ -88,14 +56,12 @@ export const RailNav: React.FC = () => {
     proposals: pendingProposalCount
   };
 
-  const handleResetClick = () => {
-    if (resetArmed) {
-      resetData();
-      setResetArmed(false);
-    } else {
-      setResetArmed(true);
-      setTimeout(() => setResetArmed(false), 4500);
-    }
+  const currentRoleDef = ROLE_DEFINITIONS[ui.role] || ROLE_DEFINITIONS.master;
+
+  const handleLogout = () => {
+    setRole('operator');
+    setAccountMenuOpen(false);
+    showToast('\u0110\u00e3 \u0111\u0103ng xu\u1ea5t phi\u00ean hi\u1ec7n t\u1ea1i.', 'success');
   };
 
   return (
@@ -128,22 +94,30 @@ export const RailNav: React.FC = () => {
         })}
       </nav>
 
-      <div className="rail-footer">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', fontSize: '11px', color: dbStatus.connected ? 'var(--good)' : 'var(--muted)' }}>
-          <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', backgroundColor: dbStatus.connected ? 'var(--good)' : 'var(--warn)' }}></span>
-          <span style={{ fontWeight: 600 }}>{dbStatus.info}</span>
-        </div>
-        <span>Lưu trữ song song: PostgreSQL & Google Sheet.</span>
+      <div className={`rail-account ${accountMenuOpen ? 'open' : ''}`}>
+        {accountMenuOpen && (
+          <div className="rail-account-menu">
+            <div className="rail-account-menu-label">{'\u0054\u00e0i kho\u1ea3n hi\u1ec7n t\u1ea1i'}</div>
+            <div className="rail-account-menu-role">{currentRoleDef.description}</div>
+            <button type="button" className="rail-logout-button" onClick={handleLogout}>
+              <LogOut size={15} />
+              <span>{'\u0110\u0103ng xu\u1ea5t'}</span>
+            </button>
+          </div>
+        )}
         <button
           type="button"
-          className="rail-footer-reset"
-          onClick={handleResetClick}
-          style={resetArmed ? { color: 'var(--bad)', textDecoration: 'none', fontWeight: 700 } : undefined}
+          className="rail-account-trigger"
+          onClick={() => setAccountMenuOpen((open) => !open)}
+          aria-expanded={accountMenuOpen}
+          aria-label={'\u004d\u1edf menu t\u00e0i kho\u1ea3n'}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <RotateCcw size={13} />
-            <span>{resetArmed ? 'Bấm lần nữa để xác nhận xóa' : 'Khôi phục dữ liệu ban đầu'}</span>
-          </div>
+          <span className="rail-account-avatar"><UserCheck size={16} /></span>
+          <span className="rail-account-copy">
+            <strong>{currentRoleDef.name}</strong>
+            <small>{currentRoleDef.title}</small>
+          </span>
+          <ChevronUp className="rail-account-chevron" size={16} />
         </button>
       </div>
     </aside>

@@ -9,7 +9,7 @@ router.post('/cost-adjustments', async (req, res) => {
     const adj = req.body;
     const saved = await upsertCostAdjustment(adj);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'cost_adjustments',
       action: 'CREATE',
       id: saved.id,

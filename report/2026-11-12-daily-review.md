@@ -67,3 +67,54 @@
 - **Kiểm tra đã chạy**:
   - `npm run build`: `tsc && vite build` hoàn thành trong **2.42s**, **0 lỗi**.
 
+## [Hiện tại] Mô phỏng giao dịch 5.800.000 và rút gọn bảng Sổ Giao Dịch
+
+- **Phạm vi**: Giữ giao dịch mô phỏng chi 5.800.000 đồng; hiển thị số đã thu/chi và tổng theo dạng `xxxx/yyy`; bỏ cột Mã khỏi bảng.
+- **Thay đổi kỹ thuật**:
+  - `src/types/index.ts`: bổ sung `paidAmt` và `totalAmt` dạng tùy chọn, tương thích với dữ liệu giao dịch cũ.
+  - `src/data/seedData.ts`: giao dịch `N0001` có `paidAmt = 5.800.000` và `totalAmt = 5.800.000`.
+  - `src/features/ledger/components/table/LedgerDataTable.tsx`: hiển thị Thu/Chi dạng `đã thực hiện/tổng`, fallback về `amt/amt`; xóa cột Mã và cập nhật `colSpan`.
+- **Kiểm tra**: `npm run build` hoàn thành thành công, TypeScript và Vite không báo lỗi.
+- **Trạng thái**: Đã hoàn thành ở phạm vi frontend/seed local; chưa xác nhận dữ liệu tương ứng trên môi trường production.
+
+## [Hiện tại] Bổ sung giao dịch mô phỏng vào PostgreSQL local
+
+- **Nguyên nhân**: Frontend nhận `AppState` từ `/api/state`, nên 216 giao dịch trong PostgreSQL ghi đè seed frontend; database chưa có giao dịch tháng 11/2026 và chưa có khoản `5.800.000`.
+- **Xử lý**: Gọi API chính thức `POST /api/transactions` để ghi giao dịch `N0001`, ngày `2026-11-12`, tài khoản `ACB`, chiều `out`, số tiền `5.800.000`, trạng thái `posted`.
+- **Kiểm tra**: `/api/state` đã trả về giao dịch `N0001` trong tháng 11/2026; sau khi tải lại trang, bảng sẽ có 1 dòng và cột Chi hiển thị `5.800.000/5.800.000`.
+- **Phạm vi**: Chỉ dữ liệu PostgreSQL local; chưa phải dữ liệu production.
+
+## [Hiện tại] Đối chiếu số lượng 217 giao dịch khi đồng bộ DB → Sheet
+
+- **Kết quả đối chiếu**: `/api/state` hiện trả về `217` giao dịch, trong đó `216` giao dịch cũ có mã `G0001` đến `G0208` và `1` giao dịch `N0001` trị giá `5.800.000` đồng.
+- **Chuỗi sự kiện đã xác nhận qua audit log**: `16:15:21` đồng bộ DB → Sheet; `16:19:36` tạo `N0001`; `16:25:20` đồng bộ DB → Sheet lần tiếp theo. Vì vậy lần đồng bộ sau cùng xuất toàn bộ `217` bản ghi.
+- **Nguyên nhân kỹ thuật**: `POST /api/sync/db-to-sheet` gọi `getFullState()` rồi lấy `state.tx.length`; nó không tạo thêm giao dịch. Nút Clear gọi `TRUNCATE ... transactions RESTART IDENTITY CASCADE`, nên nếu Clear thực sự thành công sau cùng thì DB không thể còn 216 giao dịch cũ.
+- **Kết luận**: Tại thời điểm kiểm tra, DB chưa ở trạng thái đã clear toàn bộ; hoặc thao tác Clear không hoàn tất, hoặc dữ liệu 216 dòng đã được nạp lại từ Sheet → DB trước lần đồng bộ DB → Sheet. Không có audit event Sheet → DB trong log hiện tại.
+- **Trạng thái**: Đã xác định nguyên nhân và không thực hiện thêm thao tác xóa/sync dữ liệu.
+
+
+
+## [Hiện tại] Chuẩn hóa nguyên tắc đồng bộ hai chiều PostgreSQL ↔ Google Sheet
+
+- **DB → Sheet khi ghi**: Các route ghi dữ liệu đã chờ `dispatchRealtimeSync` hoàn tất thay vì chạy nền; nếu Webhook Sheet lỗi hoặc chưa cấu hình, API không trả thành công giả.
+- **Sheet → DB**: Giao dịch trên Sheet được coi là snapshot import. Hệ thống insert/update dữ liệu có trên Sheet và xóa giao dịch DB không còn trong snapshot, trong cùng transaction PostgreSQL; trả thêm `deletedTx`.
+- **DB → Sheet thủ công**: Giữ `syncFullDatabase` là luồng chuẩn hóa toàn bộ dữ liệu PostgreSQL theo schema/cột của Sheet.
+- **Clear**: Sau khi PostgreSQL truncate, hệ thống bắt buộc kiểm tra cả kết quả làm sạch Sheet và số dư Sheet trước khi trả thành công.
+- **Kiểm tra**: `node --check` cho các module backend đã đạt; `npm run build` đạt; chưa chạy đồng bộ thật để tránh thay đổi dữ liệu hiện tại.
+- **Giới hạn ACID**: PostgreSQL và Apps Script là hai hệ thống khác nhau, không có transaction xuyên hệ thống tuyệt đối; API hiện fail-closed ở bước Sheet và cần cơ chế retry/reconcile nếu DB đã commit nhưng Sheet mất kết nối sau đó.
+
+
+## [Hi?n t?i] ??a ?i?u khi?n ??ng b? to?n h? th?ng l?n Header
+
+- **UI**: Di chuy?n b?n n?t `Sheet ? DB`, `DB ? Sheet`, `Chuy?n k? th?ng` v? `Clear S? G?c` kh?i tab Theo D?i S? D? l?n `TopHeader`, n?n m?i trang ??u nh?n th?y.
+- **H?nh vi**: Gi? nguy?n tr?ng th?i loading, x?c nh?n thao t?c, toast l?i/th?nh c?ng v? g?i l?i d? li?u sau c?c thao t?c thay ??i DB.
+- **Responsive**: Th?m h?ng header ri?ng cho c?m ??ng b?; m?n h?nh nh? cho ph?p cu?n ngang c?m n?t.
+- **Ki?m tra**: `npm run build` th?nh c?ng; kh?ng ch?y ??ng b? th?t v? kh?ng thay ??i d? li?u Sheet/DB trong b??c UI n?y.
+
+
+## [16:30] Chuyển khu vực tài khoản vào chân menu
+
+- **Phạm vi**: Bỏ thẻ trạng thái PostgreSQL/LocalStorage và nút khôi phục dữ liệu khỏi `RailNav`; bỏ huy hiệu tài khoản khỏi `TopHeader`.
+- **Thay đổi**: Thêm khu vực tài khoản cuối rail, menu mở rộng hiển thông tin vai trò và nút `Đăng xuất`; thao tác đăng xuất cập nhật về vai trò mặc định `operator` trong phiên mô phỏng.
+- **CSS**: Thêm style cho account panel, menu logout và trạng thái responsive; không còn ẩn khu vực này trên mobile.
+- **Kiểm tra**: `npm run build` thành công; không thực hiện thao tác Sheet/DB hay xóa dữ liệu.

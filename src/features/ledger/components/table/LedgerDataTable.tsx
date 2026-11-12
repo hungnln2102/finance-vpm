@@ -26,7 +26,6 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
         <thead>
           <tr>
             <th>Ngày</th>
-            <th>Mã</th>
             <th>Tài khoản</th>
             <th>Diễn giải & Chứng từ</th>
             <th>Phân loại</th>
@@ -38,11 +37,13 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
         <tbody>
           {rows.map((t) => {
             const issues = txIssues(t);
+            const paidAmt = t.paidAmt ?? t.amt;
+            const totalAmt = t.totalAmt ?? t.amt;
+            const amountDisplay = `${fmt(paidAmt)}/${fmt(totalAmt)}`;
 
             return (
               <tr key={t.id} style={editTxId === t.id ? { background: 'var(--teal-soft)' } : undefined}>
                 <td style={{ whiteSpace: 'nowrap', fontFamily: 'var(--f-num)' }}>{dmy(t.date)}</td>
-                <td style={{ fontFamily: 'var(--f-num)', fontWeight: 600 }}>{t.id}</td>
                 <td>
                   <span className="chip">{t.acc}</span>
                 </td>
@@ -75,10 +76,10 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
                   )}
                 </td>
                 <td className="num" style={{ color: t.dir === 'in' ? 'var(--good)' : undefined, fontWeight: t.dir === 'in' ? 600 : 400 }}>
-                  {t.dir === 'in' ? fmt(t.amt) : ''}
+                  {t.dir === 'in' ? amountDisplay : ''}
                 </td>
                 <td className="num" style={{ color: t.dir === 'out' ? 'var(--bad)' : undefined, fontWeight: t.dir === 'out' ? 600 : 400 }}>
-                  {t.dir === 'out' ? fmt(t.amt) : ''}
+                  {t.dir === 'out' ? amountDisplay : ''}
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                   {canEdit && !locked && (
@@ -99,7 +100,7 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
 
           {rows.length === 0 && (
             <tr>
-              <td colSpan={8} style={{ textAlign: 'center', padding: '32px', color: 'var(--muted)' }}>
+              <td colSpan={7} style={{ textAlign: 'center', padding: '32px', color: 'var(--muted)' }}>
                 Không có giao dịch nào phù hợp bộ lọc
               </td>
             </tr>

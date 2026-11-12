@@ -36,6 +36,9 @@ export async function syncToGoogleSheet(action, data) {
     }
 
     const resJson = await response.json();
+    if (resJson && resJson.success === false) {
+      return { success: false, error: resJson.error || 'Google Sheet rejected the sync' };
+    }
     return { success: true, result: resJson };
   } catch (err) {
     console.error(`❌ [SheetSync] Lỗi khi gửi dữ liệu sang Google Sheet (${action}):`, err.message);
@@ -52,54 +55,48 @@ export async function syncToGoogleSheet(action, data) {
  */
 export async function dispatchRealtimeSync({
   table,
-  action, // 'CREATE' | 'UPDATE' | 'DELETE'
+  action,
   id,
   data = {},
   actor = 'System',
   details = ''
 }) {
-  // 1. Ghi log kiểm toán vào PostgreSQL
-  try {
-    await recordAuditLog({
+  await recordAuditLog({
+    action,
+    tableName: table,
+    recordId: id,
+    actor,
+    details: details || `${action} ${table} ID: ${id}`,
+    payload: data
+  });
+
+  const url = process.env.GOOGLE_SHEET_API_URL;
+  if (!url || !url.trim()) {
+    throw new Error('GOOGLE_SHEET_API_URL is not configured');
+  }
+
+  const rowResult = table === 'sync' || (action === 'DELETE' && id === 'ALL')
+    ? { success: true }
+    : action === 'DELETE'
+      ? await syncToGoogleSheet('deleteRow', { table, id })
+      : await syncToGoogleSheet('syncRow', { table, id, data });
+  if (!rowResult.success) {
+    throw new Error(rowResult.error || `Google Sheet sync failed for ${action} ${table}/${id}`);
+  }
+
+  const logResult = await syncToGoogleSheet('logActivity', {
+    logData: {
+      timestamp: new Date().toISOString(),
       action,
       tableName: table,
       recordId: id,
       actor,
-      details: details || `${action} ${table} ID: ${id}`,
-      payload: data
-    });
-  } catch (dbLogErr) {
-    console.warn(`⚠️ [AuditLog] Không thể ghi audit log vào DB:`, dbLogErr.message);
+      details: details || `${action} ${table} ID: ${id}`
+    }
+  });
+  if (!logResult.success) {
+    throw new Error(logResult.error || 'Google Sheet audit log sync failed');
   }
 
-  // 2. Gửi Webhook Realtime sang Google Sheet (Non-blocking)
-  const url = process.env.GOOGLE_SHEET_API_URL;
-  if (!url || !url.trim()) return;
-
-  // Thực thi ngầm không chặn luồng chính
-  (async () => {
-    try {
-      if (action === 'DELETE') {
-        await syncToGoogleSheet('deleteRow', { table, id });
-      } else {
-        // CREATE hoặc UPDATE
-        await syncToGoogleSheet('syncRow', { table, id, data });
-      }
-
-      // Đẩy log sang tab 09_NHATKY_HOATDONG của Google Sheet
-      await syncToGoogleSheet('logActivity', {
-        logData: {
-          timestamp: new Date().toISOString(),
-          action,
-          tableName: table,
-          recordId: id,
-          actor,
-          details: details || `${action} ${table} ID: ${id}`
-        }
-      });
-    } catch (sheetErr) {
-      console.warn(`⚠️ [RealtimeSync] Lỗi gửi realtime sang Google Sheet:`, sheetErr.message);
-    }
-  })();
+  return { success: true };
 }
-

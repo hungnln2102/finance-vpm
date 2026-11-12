@@ -23,7 +23,7 @@ router.post('/transactions', async (req, res) => {
 
     const saved = await insertTransaction(tx);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'transactions',
       action: 'CREATE',
       id: saved.id,
@@ -56,7 +56,7 @@ router.put('/transactions/:id', async (req, res) => {
 
     const updated = await updateTransaction(id, updates);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'transactions',
       action: 'UPDATE',
       id,
@@ -82,7 +82,7 @@ router.delete('/transactions/:id', async (req, res) => {
     const { id } = req.params;
     const deleted = await deleteTransaction(id);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'transactions',
       action: 'DELETE',
       id,
@@ -149,8 +149,11 @@ router.post('/ledger/clear', async (req, res) => {
       syncToGoogleSheet('clearTransactions', {}).catch((e) => ({ success: false, error: e.message })),
       syncToGoogleSheet('syncMonthlyBalances', { balances }).catch((e) => ({ success: false, error: e.message }))
     ]);
+    if (!sheetClearRes.success || !sheetBalanceRes.success) {
+      throw new Error(sheetClearRes.error || sheetBalanceRes.error || 'Google Sheet clear sync failed');
+    }
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'transactions',
       action: 'DELETE',
       id: 'ALL',
@@ -180,7 +183,7 @@ router.post('/cron/trigger-rollover', async (req, res) => {
     const { targetMonth } = req.body || {};
     const result = await executeMonthRollover(targetMonth);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'monthly_balances',
       action: 'CREATE',
       id: result.targetMonth,

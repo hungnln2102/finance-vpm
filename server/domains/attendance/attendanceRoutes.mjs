@@ -9,7 +9,7 @@ router.post('/attendance', async (req, res) => {
     const { staffId, dateIso, val, staffName } = req.body;
     const att = await saveAttendance(staffId, dateIso, val);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'attendance',
       action: 'UPDATE',
       id: staffId,
@@ -30,7 +30,7 @@ router.post('/staff', async (req, res) => {
     const s = req.body;
     const saved = await upsertStaff(s);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'staff',
       action: 'UPDATE',
       id: saved.id,
@@ -51,7 +51,7 @@ router.delete('/staff/:id', async (req, res) => {
     const { id } = req.params;
     const deleted = await deleteStaff(id);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'staff',
       action: 'DELETE',
       id,

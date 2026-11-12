@@ -1,8 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '../../../context/useApp';
+import { apiClient } from '../../../services/apiClient';
 import { ROLE_DEFINITIONS, TODAY } from '../../../data/constants';
 import { dmy, monthLabel, generateAvailableMonths } from '../../../utils/formatters';
-import { Calendar, UserCheck, CheckCircle2 } from 'lucide-react';
+import { Calendar, CheckCircle2 } from 'lucide-react';
+import { BalanceSyncActions } from '../../../features/ledger/components/balance/BalanceSyncActions';
 
 const VIEW_TITLES: Record<string, { title: string; subtitle: (month: string) => string }> = {
   overview: {
@@ -44,7 +46,11 @@ const VIEW_TITLES: Record<string, { title: string; subtitle: (month: string) => 
 };
 
 export const TopHeader: React.FC = () => {
-  const { state, ui, setMonth, setDateRange } = useApp();
+  const { state, ui, setMonth, setDateRange, showToast, refreshFromDatabase } = useApp();
+  const [isSyncingSheetToDb, setIsSyncingSheetToDb] = useState(false);
+  const [isSyncingDbToSheet, setIsSyncingDbToSheet] = useState(false);
+  const [isClearingLedger, setIsClearingLedger] = useState(false);
+  const [isRollingOver, setIsRollingOver] = useState(false);
 
   const currentViewConfig = VIEW_TITLES[ui.view] || VIEW_TITLES.overview;
   const currentRoleDef = ROLE_DEFINITIONS[ui.role] || ROLE_DEFINITIONS.master;
@@ -55,19 +61,85 @@ export const TopHeader: React.FC = () => {
     return generateAvailableMonths(3, existing);
   }, [state.tx]);
 
+  const handleSyncSheetToDb = async () => {
+    setIsSyncingSheetToDb(true);
+    showToast('Đang đồng bộ toàn bộ dữ liệu từ Google Sheet về PostgreSQL...', 'loading');
+    try {
+      const res = await apiClient.syncSheetToDb();
+      if (res.success) {
+        showToast(`Đã import Sheet → DB: ${res.insertedTx || 0} mới, ${res.updatedTx || 0} cập nhật, ${res.deletedTx || 0} xóa.`, 'success', 4500);
+        await refreshFromDatabase();
+      } else {
+        showToast(res.error || 'Không thể đồng bộ Sheet → DB', 'error', 5500);
+      }
+    } finally {
+      setIsSyncingSheetToDb(false);
+    }
+  };
+
+  const handleSyncDbToSheet = async () => {
+    setIsSyncingDbToSheet(true);
+    showToast('Đang chuẩn hóa toàn bộ PostgreSQL và ghi đè Google Sheet...', 'loading');
+    try {
+      const res = await apiClient.syncDbToSheet();
+      if (res.success) {
+        showToast(`Đã ghi PostgreSQL → Sheet: ${res.txCount || 0} giao dịch, ${res.contractCount || 0} hợp đồng.`, 'success', 4500);
+      } else {
+        showToast(res.error || 'Không thể đồng bộ DB → Sheet', 'error', 5500);
+      }
+    } finally {
+      setIsSyncingDbToSheet(false);
+    }
+  };
+
+  const handleClearLedger = async () => {
+    if (!window.confirm('CẢNH BÁO: Xóa toàn bộ giao dịch và số dư trên PostgreSQL cùng Google Sheet?')) return;
+    setIsClearingLedger(true);
+    showToast('Đang xóa toàn bộ Sổ Gốc trên PostgreSQL và Google Sheet...', 'loading');
+    try {
+      const res = await apiClient.clearLedger();
+      if (res.success) {
+        showToast('Đã xóa toàn bộ Sổ Gốc trên cả hai hệ thống.', 'success', 4500);
+        await refreshFromDatabase();
+      } else {
+        showToast(res.error || 'Không thể Clear Sổ Gốc', 'error', 5500);
+      }
+    } finally {
+      setIsClearingLedger(false);
+    }
+  };
+
+  const handleTriggerRollover = async () => {
+    if (!window.confirm('Chuyển kỳ tháng mới và đồng bộ số dư lên Google Sheet?')) return;
+    setIsRollingOver(true);
+    showToast('Đang chuyển kỳ tháng và cập nhật số dư...', 'loading');
+    try {
+      const res = await apiClient.triggerRollover();
+      if (res.success) {
+        showToast('Đã chuyển kỳ tháng thành công.', 'success', 4500);
+        await refreshFromDatabase();
+      } else {
+        showToast(res.error || 'Không thể chuyển kỳ tháng', 'error', 5500);
+      }
+    } finally {
+      setIsRollingOver(false);
+    }
+  };
+
   return (
     <header className="top-header">
-      <div className="header-title-box">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <h1>{currentViewConfig.title}</h1>
-          <span className="badge-tag live-badge">
-            <CheckCircle2 size={12} color="#10b981" /> ACID Realtime
-          </span>
+      <div className="header-main-row">
+        <div className="header-title-box">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h1>{currentViewConfig.title}</h1>
+            <span className="badge-tag live-badge">
+              <CheckCircle2 size={12} color="#10b981" /> ACID Realtime
+            </span>
+          </div>
+          <div className="header-subtitle">{currentViewConfig.subtitle(ui.month)}</div>
         </div>
-        <div className="header-subtitle">{currentViewConfig.subtitle(ui.month)}</div>
-      </div>
 
-      <div className="top-controls">
+        <div className="top-controls">
         {/* Bộ chọn kỳ tháng kế toán linh hoạt */}
         <label htmlFor="month-select" className="control-label">
           <Calendar size={15} />
@@ -141,17 +213,20 @@ export const TopHeader: React.FC = () => {
             </button>
           )}
         </div>
-
-        {/* Profile Badge hiển thị người dùng hiện tại */}
-        <div className="user-profile-badge" title={currentRoleDef.description}>
-          <div className="user-avatar-circle">
-            <UserCheck size={14} />
-          </div>
-          <div className="user-info-text">
-            <span className="user-name">{currentRoleDef.name}</span>
-            <span className="user-role-label">{currentRoleDef.title}</span>
-          </div>
         </div>
+      </div>
+
+      <div className="global-sync-bar">
+        <BalanceSyncActions
+          isSyncingSheetToDb={isSyncingSheetToDb}
+          isSyncingDbToSheet={isSyncingDbToSheet}
+          isClearingLedger={isClearingLedger}
+          isRollingOver={isRollingOver}
+          onSyncSheetToDb={handleSyncSheetToDb}
+          onSyncDbToSheet={handleSyncDbToSheet}
+          onClearLedger={handleClearLedger}
+          onTriggerRollover={handleTriggerRollover}
+        />
       </div>
     </header>
   );

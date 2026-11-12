@@ -37,7 +37,7 @@ router.post('/sync/sheet-to-db', async (req, res) => {
 
     const stats = await importSheetDataToPostgres(sheetData);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'sync',
       action: 'UPDATE',
       id: 'SHEET_TO_DB',
@@ -66,7 +66,7 @@ router.post('/sync/db-to-sheet', async (req, res) => {
     ]);
     const result = await syncToGoogleSheet('syncFullDatabase', { state, balances });
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'sync',
       action: 'UPDATE',
       id: 'DB_TO_SHEET',

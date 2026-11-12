@@ -9,7 +9,7 @@ router.post('/contracts', async (req, res) => {
     const c = req.body;
     const saved = await insertContract(c);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'contracts',
       action: 'CREATE',
       id: saved.id,
@@ -30,7 +30,7 @@ router.delete('/contracts/:id', async (req, res) => {
     const { id } = req.params;
     const deleted = await deleteContract(id);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'contracts',
       action: 'DELETE',
       id,
@@ -51,7 +51,7 @@ router.put('/contracts/:id/approve-discount', async (req, res) => {
     const { id } = req.params;
     const updated = await approveContractDiscount(id);
 
-    dispatchRealtimeSync({
+    await dispatchRealtimeSync({
       table: 'contracts',
       action: 'UPDATE',
       id,
