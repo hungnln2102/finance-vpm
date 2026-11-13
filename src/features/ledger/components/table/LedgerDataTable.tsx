@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Transaction, TransactionReceipt, Proposal, Contract } from '../../../../types';
-import { TYPES, CATS } from '../../../../data/constants';
+import { TYPES } from '../../../../data/constants';
+import { useApp } from '../../../../context/useApp';
 import { fmt, dmy } from '../../../../utils/formatters';
 import { txIssues } from '../../../../services/financeService';
 import { CustomSelect, CustomSelectOption } from '../../../../shared/components/common/CustomSelect';
@@ -40,6 +41,8 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
   onEditTx,
   onUpdateTx
 }) => {
+  const { state } = useApp();
+  const categoryNames = state.costCategories;
   // State lưu id của dòng đang mở dropdown xem biên lai
   const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
 
@@ -93,7 +96,7 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
   }, [approvedProposals]);
 
   const opexOptions: CustomSelectOption[] = useMemo(() => {
-    return Object.entries(CATS).map(([k, label]) => ({
+    return Object.entries(categoryNames).map(([k, label]) => ({
       value: k,
       label: label,
       badge: k,
@@ -329,7 +332,7 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
                     <div style={{ fontSize: '12px', fontWeight: 500 }}>{TYPES[t.type]?.l || t.type}</div>
                     {t.cat && (
                       <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
-                        {CATS[t.cat] || t.cat}
+                        {categoryNames[t.cat] || t.cat}
                       </div>
                     )}
                     {t.contract && (
@@ -594,7 +597,7 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
                                       setSelectedProposalId(firstP?.id || '');
                                       setContractInput(firstP?.code || firstP?.id || '');
                                     } else if (nextCat === 'opex') {
-                                      const firstCat = Object.keys(CATS)[0] || 'VP';
+                                      const firstCat = Object.keys(categoryNames)[0] || 'VP';
                                       setSelectedCat(firstCat);
                                       setContractInput(firstCat);
                                     } else if (nextCat === 'other_income') {

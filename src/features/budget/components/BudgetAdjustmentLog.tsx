@@ -1,6 +1,5 @@
 import React from 'react';
 import { Layers, CheckCircle2, Clock, ShieldCheck, FileCheck, XCircle } from 'lucide-react';
-import { CATS } from '../../../data/constants';
 import { fmt, monthLabel } from '../../../utils/formatters';
 import { CostAdjustment, Role } from '../../../types';
 
@@ -10,6 +9,7 @@ interface BudgetAdjustmentLogProps {
   uiRole: Role;
   onApprove: (id: string) => void;
   onReject?: (id: string) => void;
+  categoryNames: Record<string, string>;
 }
 
 export const BudgetAdjustmentLog: React.FC<BudgetAdjustmentLogProps> = ({
@@ -18,6 +18,7 @@ export const BudgetAdjustmentLog: React.FC<BudgetAdjustmentLogProps> = ({
   uiRole,
   onApprove,
   onReject,
+  categoryNames
 }) => {
   return (
     <section className="card-box" style={{ padding: '20px 22px' }}>
@@ -61,7 +62,7 @@ export const BudgetAdjustmentLog: React.FC<BudgetAdjustmentLogProps> = ({
                 </td>
                 <td style={{ whiteSpace: 'nowrap' }}>{monthLabel(adj.month)}</td>
                 <td>
-                  <b>{CATS[adj.category] || adj.category}</b>
+                  <b>{categoryNames[adj.category] || adj.category}</b>
                 </td>
                 <td className="num" style={{ fontFamily: 'var(--f-num)', color: 'var(--muted)' }}>
                   {fmt(adj.oldBudget)} đ

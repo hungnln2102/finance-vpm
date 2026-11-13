@@ -1,7 +1,7 @@
 import React from 'react';
 import { useApp } from './../../context/useApp';
 import { DEDUCT_SELF } from '../../data/constants';
-import { fmt, mil, dmy } from '../../utils/formatters';
+import { fmt, mil, dmy, monthLabel } from '../../utils/formatters';
 import { 
   getAttendanceDays, 
   calculateStandardDays, 
@@ -23,10 +23,10 @@ export const PayrollView: React.FC = () => {
   const ds = getAttendanceDays(m, state.holidays);
   const std = calculateStandardDays(m, state.holidays);
   const alerts = detectAttendanceAlerts(state.staff, state.att, m, state.holidays);
-  const alertSet = new Set(alerts.map((a) => a.s + a.d));
+  const alertSet = new Set(alerts.map((a) => a.staffId + a.d));
 
   const payrollCalculations = state.staff.map((s) => {
-    const attRec = state.att[s.name];
+    const attRec = state.att[s.id];
     const p = calculateSalary(s, attRec, m, state.holidays);
     return { staff: s, calc: p };
   });
@@ -42,7 +42,7 @@ export const PayrollView: React.FC = () => {
         <h2 className="card-title">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Users size={18} style={{ color: 'var(--teal)' }} />
-            <span>Bảng chấm công tháng 9/2026</span>
+            <span>Bảng chấm công {monthLabel(m)}</span>
           </div>
           <small>công chuẩn {std} ngày · bấm vào từng ô để đổi ký hiệu</small>
         </h2>
@@ -75,7 +75,7 @@ export const PayrollView: React.FC = () => {
             </thead>
             <tbody>
               {state.staff.map((s) => {
-                const a = (state.att[s.name] || { days: {} }).days;
+                const a = (state.att[s.id] || { days: {} }).days;
                 const p = payrollCalculations.find((item) => item.staff.id === s.id)?.calc;
                 const totalWork = p ? p.work + p.holWork + p.sunWork : 0;
 
@@ -97,7 +97,7 @@ export const PayrollView: React.FC = () => {
                           : v === 2
                           ? 'v2'
                           : '';
-                      const isAlert = alertSet.has(s.name + d.iso);
+                      const isAlert = alertSet.has(s.id + d.iso);
 
                       return (
                         <td key={d.iso}>
@@ -131,7 +131,7 @@ export const PayrollView: React.FC = () => {
                 <li key={i} className="issue-item warn">
                   <i className="issue-dot" />
                   <span>
-                    <b>{a.s}</b> · ngày {dmy(a.d)}: {a.msg}
+                    <b>{a.staffName}</b> · ngày {dmy(a.d)}: {a.msg}
                   </span>
                   <span />
                 </li>
@@ -165,7 +165,7 @@ export const PayrollView: React.FC = () => {
       {/* Salary Table Card */}
       <section className="card-box">
         <h2 className="card-title">
-          <span>Bảng lương tháng 9/2026</span>
+          <span>Bảng lương {monthLabel(m)}</span>
           <small>thưởng KPI không chia theo ngày công · giảm trừ bản thân {mil(DEDUCT_SELF)}</small>
         </h2>
 
@@ -249,7 +249,7 @@ export const PayrollView: React.FC = () => {
         </div>
 
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted)', lineHeight: 1.45 }}>
-          Biểu thuế 5 bậc và mức giảm trừ lấy theo file lương hiện tại của khách và quy định tính thuế; VPM rà lại trước khi áp dụng chi trả thực tế. Tạm ứng nhập theo từng người thay cho dòng ghi chú "đã trừ 6 tr ứng T9" ghi tay.
+          Biểu thuế 5 bậc và mức giảm trừ lấy theo file lương hiện tại của khách và quy định tính thuế; VPM rà lại trước khi áp dụng chi trả thực tế. Tạm ứng được lưu theo từng người thay cho ghi chú thủ công.
         </p>
       </section>
     </div>

@@ -56,6 +56,7 @@ export const DebtView: React.FC = () => {
         onSetKind={setDebtKind}
         onSetOnlyOver={setDebtOnlyOver}
         onApproveDiscount={approveDiscount}
+        onAddInvoice={(contract, invoice) => addContract({ ...invoice, kind: contract.kind, flow: contract.flow, customer: contract.customer, tv: contract.tv })}
         onOpenCreateModal={() => setShowCreateModal(true)}
       />
 

@@ -7,7 +7,7 @@
     "server": "node server/index.mjs",
     "start": "node server/index.mjs",
     "dev:frontend": "vite",
-    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"node server/index.mjs\" \"vite\"",
+    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"node --watch server/index.mjs\" \"vite\"",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },

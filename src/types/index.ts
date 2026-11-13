@@ -169,6 +169,8 @@ export interface StaffAllowance {
 export interface Staff {
   id: string;
   name: string;
+  department?: string;
+  hireDate?: string;
   role: string;
   base: number;
   kpi: number;
@@ -204,6 +206,26 @@ export interface GiftMovement {
 export interface AttendanceRecord {
   days: Record<string, number | string | undefined>; // "YYYY-MM-DD" -> 1, 0.5, "L", "X", 2
   ghost31?: boolean | number;
+}
+
+export interface AttendanceLog {
+  id: number;
+  staffId: string;
+  date: string;
+  val?: number | string | null;
+  action: 'save' | 'delete';
+  time: string;
+}
+
+export interface StaffBenefit {
+  month: string;
+  staffId: string;
+  holidaySunday: number;
+  ot: number;
+  kpi: number;
+  bhxh: number;
+  tax: number;
+  time: string;
 }
 
 export interface BudgetMap {
@@ -244,7 +266,7 @@ export interface AppState {
   holidays: string[];
   att: Record<string, AttendanceRecord>;
   budget: Record<string, BudgetMap>;
-  costCategories?: Record<string, Record<string, string>>;
+  costCategories: Record<string, string>;
   disabledCostCategories?: Record<string, string[]>;
   costAdjustments: CostAdjustment[];
   webhooks: BankWebhookLog[];

@@ -11,7 +11,8 @@ export interface AttendanceDayInfo {
 }
 
 export interface AttendanceAlert {
-  s: string;
+  staffId: string;
+  staffName: string;
   d: string;
   msg: string;
 }
@@ -67,12 +68,12 @@ export function detectAttendanceAlerts(
 
   for (const d of daysList) {
     for (const s of staffList) {
-      const v = (attendance[s.name] || { days: {} }).days[d.iso];
+      const v = (attendance[s.id] || { days: {} }).days[d.iso];
       if (d.hol && (v === 1 || v === 0.5)) {
-        out.push({ s: s.name, d: d.iso, msg: "Ngày lễ đang chấm như ngày thường" });
+        out.push({ staffId: s.id, staffName: s.name, d: d.iso, msg: "Ngày lễ đang chấm như ngày thường" });
       }
       if (d.sun && (v === 1 || v === 0.5)) {
-        out.push({ s: s.name, d: d.iso, msg: "Chủ nhật chấm 1 – đi làm thì chọn 200%" });
+        out.push({ staffId: s.id, staffName: s.name, d: d.iso, msg: "Chủ nhật chấm 1 – đi làm thì chọn 200%" });
       }
     }
   }
@@ -111,7 +112,7 @@ export function calculateSalary(
 ): SalaryBreakdown {
   const a = (attRecord || { days: {} }).days;
   const std = calculateStandardDays(attMonth, holidays);
-  const allow = (staff.allow.phone || 0) + (staff.allow.fuel || 0) + (staff.allow.meal || 0) + (staff.allow.travel || 0);
+  const allow = staff.allow.phone + staff.allow.fuel + staff.allow.meal + staff.allow.travel;
   const rate = (staff.base + allow) / std;
 
   let work = 0;

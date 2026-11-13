@@ -268,3 +268,241 @@
 ### 3. Kết quả kiểm thử & Nghiệm thu
 - **TypeScript & Build Check**: Chạy `npm run build` (`tsc && vite build`) hoàn thành thành công trong **5.37s** không phát sinh bất kỳ lỗi nào.
 - Giao diện trang Công nợ thoáng đãng, hiện đại, hỗ trợ tạo nhanh cả 2 luồng Thu và Chi, đồng thời bảng đối soát thể hiện rõ rệt 2 cột Thu - Chi.
+
+## [20:45] Tạo tài khoản quản trị PostgreSQL
+
+### 1. Phạm vi & Yêu cầu
+- Tạo tài khoản đăng nhập `admin` trực tiếp trong PostgreSQL theo yêu cầu của Master.
+- Cấp vai trò `admin`, giữ tài khoản hoạt động và không lưu mật khẩu dạng rõ.
+
+### 2. Thay đổi kỹ thuật
+- Thêm một bản ghi vào bảng `finance_vpm.user_accounts` với tên hiển thị `Quản trị viên`.
+- Mật khẩu được băm theo cơ chế xác thực sẵn có của `server/domains/auth/authService.mjs`: `scrypt` với salt ngẫu nhiên.
+
+### 3. Kết quả kiểm tra & Nghiệm thu
+- Xác nhận trước khi tạo: tên đăng nhập `admin` chưa tồn tại.
+- Sau khi tạo: tài khoản có vai trò `admin`, `is_active = true`, và hash được `verifyPassword` xác minh thành công.
+- Không ghi mật khẩu rõ vào mã nguồn, cấu hình hoặc báo cáo.
+## [21:10] Chuẩn hóa danh mục Cost và định mức ngân sách vào PostgreSQL
+
+### 1. Phạm vi & Yêu cầu
+- Tạo bảng dữ liệu còn thiếu cho danh mục cost và định mức ngân sách theo tháng.
+- Giữ nguyên bảng kế hoạch `proposals`, di chuyển định mức cũ khỏi JSON metadata và xóa dữ liệu seed/hard-code trong code.
+
+### 2. Thay đổi kỹ thuật
+- Thêm `finance_vpm.cost_categories` và `finance_vpm.cost_budgets`; giữ `cost_adjustments` làm lịch sử điều chỉnh.
+- Chuyển dữ liệu từ `app_metadata.budget` sang `cost_budgets` trong transaction idempotent, rồi xóa key metadata cũ.
+- Thay frontend seed bằng state rỗng, lấy danh mục/định mức từ API PostgreSQL và ghi tạo/cập nhật/bật tắt cost qua API.
+- Xóa `src/data/seedData.ts`, `server/seedData.json` và danh mục `CATS` hard-code.
+
+### 3. Kết quả kiểm tra & Nghiệm thu
+- PostgreSQL có 6 danh mục cost chuẩn, 2 định mức tháng `2026-08`, 2 kế hoạch và không còn bản ghi `app_metadata.budget`.
+- `initDb()` chạy lặp lại an toàn; `npx tsc --noEmit` và `npm run build` hoàn thành thành công.
+- Không còn tham chiếu `CATS`, `seedData`, `seedInitial` hoặc `seedIfEmpty` trong `src/` và `server/`.
+## [21:50] Xổ chi tiết hóa đơn tại Công nợ
+
+### 1. Phạm vi & yêu cầu
+- Mỗi dòng Công nợ cần có dropdown để xem hóa đơn/hợp đồng, kể cả khi chưa có giao dịch thanh toán.
+
+### 2. Thay đổi kỹ thuật
+- `src/features/debt/components/DebtTable.tsx`: bỏ điều kiện chỉ hiển thị nút khi có giao dịch; thêm nút `Hóa đơn` có trạng thái mở/đóng cho mọi dòng.
+- Panel mở rộng hiển thị số hóa đơn, ngày ký, hạn thanh toán, giá trị phải thu/chi và lịch sử đối soát; khi chưa có giao dịch, hiển thị trạng thái rõ ràng thay vì để trống.
+
+### 3. Kết quả kiểm tra & nghiệm thu
+- Xác minh trên `KH01`: bấm `Hóa đơn` mở panel với số HĐ `8288152.0`, ngày ký, hạn thanh toán, giá trị `13.500.000 đ` và thông báo chưa có giao dịch khớp.
+- `npx tsc --noEmit`, `npm run build` và `git diff --check` hoàn thành thành công. Build còn cảnh báo chunk JavaScript vượt 500 kB, không liên quan thay đổi này.
+
+## [22:00] Form thêm hóa đơn theo khách hàng
+
+- `src/features/debt/components/DebtTable.tsx`: trong dropdown mỗi khách thêm form `Số hóa đơn mới`, `Giá trị`, `Hạn thanh toán`; gửi form tạo một khoản công nợ/hóa đơn mới, giữ nguyên khách hàng và tư vấn hiện tại.
+- `src/features/debt/DebtView.tsx`: nối form với luồng `addContract` đang ghi PostgreSQL, không tạo dữ liệu mock.
+- Đã xác minh panel `KH01` hiển thị form; `npx tsc --noEmit`, `npm run build` và `git diff --check` thành công. Cảnh báo bundle lớn hơn 500 kB là hiện hữu, không do thay đổi này.
+
+
+## [23:05] Nâng cấp trang Quà & Ấn Phẩm (`GiftsView`): Thẻ vật phẩm Nhập - Xuất - Tồn, Modal lịch sử chi tiết & Modal tạo phiếu xuất/nhập
+
+### 1. Phạm vi & Yêu cầu
+- **Nâng cấp thẻ vật phẩm (`GiftItemCard.tsx`)**:
+  - Hiển thị trực quan bộ 3 chỉ số cốt lõi trên từng thẻ: **Nhập (`In`)**, **Đã xuất (`Out`)** và **Tồn kho (`Balance`)** kèm tổng giá trị tồn kho.
+  - Badge cảnh báo trạng thái tồn kho (`Còn hàng` / `Sắp hết` `< 5` / `Hết hàng` `<= 0`), hiệu ứng hover glow và gợi ý *"Bấm xem lịch sử"*.
+- **Modal tra cứu lịch sử riêng từng vật phẩm (`GiftDetailModal.tsx`)**:
+  - Khi click vào bất kỳ thẻ vật phẩm nào, mở Modal hiển thị 4 chỉ số tổng hợp của riêng vật phẩm đó (Tổng đã nhập, Tổng đã xuất, Tồn kho hiện tại, Khấu trừ TV 50%) và bảng lịch sử các phiếu xuất/nhập lọc riêng cho vật phẩm đó.
+  - Tích hợp nút chuyển nhanh sang tạo phiếu cho đúng vật phẩm đang xem.
+- **Chuyển khối form inline thành nút bấm & Modal (`GiftMovementModal.tsx`)**:
+  - Gỡ bỏ khối form cố định chiếm diện tích trên trang chính `GiftsView.tsx`.
+  - Bổ sung nút **`+ Tạo phiếu xuất / nhập`** trên thanh tiêu đề bảng lịch sử.
+  - Modal hỗ trợ Segmented Toggle chuyển đổi **Xuất kho / Nhập kho**, hiển thị số lượng tồn kho khả dụng, chặn xuất vượt tồn kho và tự động tính preview khấu trừ 50% lương khi xuất cho Tư vấn (`TV`).
+
+### 2. File thay đổi (Technical Changes)
+- [docs/GIFTS_SPEC_KIT.md](file:///e:/Project/finance-vpm/docs/GIFTS_SPEC_KIT.md): Tài liệu quy hoạch Spec-Kit SDD & Pre-Flight Check kỹ thuật.
+- [src/features/gifts/components/GiftItemCard.tsx](file:///e:/Project/finance-vpm/src/features/gifts/components/GiftItemCard.tsx): Component thẻ vật phẩm hiển thị 3 cột Nhập - Xuất - Tồn và sự kiện click mở lịch sử.
+- [src/features/gifts/components/GiftDetailModal.tsx](file:///e:/Project/finance-vpm/src/features/gifts/components/GiftDetailModal.tsx): Component Modal tra cứu chi tiết biến động xuất/nhập của riêng vật phẩm đã chọn.
+- [src/features/gifts/components/GiftMovementModal.tsx](file:///e:/Project/finance-vpm/src/features/gifts/components/GiftMovementModal.tsx): Component Modal form lập phiếu Xuất kho / Nhập kho.
+- [src/features/gifts/GiftsView.tsx](file:///e:/Project/finance-vpm/src/features/gifts/GiftsView.tsx): Tái cấu trúc thành Thin Orchestrator kết nối KPI tiles, lưới thẻ vật phẩm, bảng lịch sử và 2 Modals.
+
+### 3. Kết quả kiểm thử & Nghiệm thu
+- **TypeScript & Build Check**: Chạy `npx tsc --noEmit` và `npm run build` hoàn thành thành công không phát sinh lỗi.
+- Đảm bảo 100% tiêu chí nghiệm thu Gherkin trong `GIFTS_SPEC_KIT.md`.
+
+## [23:19] Sửa trang Chấm Công & Lương
+
+### 1. Phạm vi
+- Khắc phục lỗi lệch contract nhân sự giữa PostgreSQL và công thức lương.
+- Khắc phục mất dữ liệu chấm công/đề xuất/tạm ứng sau khi tải lại trang.
+- Bỏ nội dung tháng `9/2026` và `T9` bị hard-code.
+
+### 2. Thay đổi kỹ thuật
+- `server/domains/state/stateService.mjs`: chuyển staff DB về đúng shape `Staff`, ghép attendance rows theo `staffId`, hỗ trợ dữ liệu metadata cũ theo tên, và nạp payroll metadata.
+- `server/domains/attendance/attendanceService.mjs`: thêm ghi chấm công hàng loạt trong một transaction và lưu tạm ứng theo nhân sự.
+- `server/domains/attendance/attendanceRoutes.mjs`, `src/services/apiClient.ts`: thêm API batch attendance và API lưu tạm ứng.
+- `src/context/actions/useOperationsActions.ts`, `src/services/payrollService.ts`: dùng `staffId` xuyên suốt; chỉ cập nhật UI sau khi DB lưu thành công.
+- `src/features/payroll/PayrollView.tsx`, `src/services/financeService.ts`: hiển thị tháng động.
+
+### 3. Kết quả kiểm tra & nghiệm thu
+- `npm run build` hoàn thành thành công; TypeScript và Vite không phát sinh lỗi.
+- `node --check` đạt cho các module backend đã sửa.
+- Đọc trực tiếp PostgreSQL: `staffCount=5`, `attendanceRecords=10`, `invalidStaff=0`, `invalidAttendance=0`.
+- `git diff --check` không phát hiện lỗi whitespace; cảnh báo bundle trên 500 kB là cảnh báo hiện hữu của Vite.
+
+## [23:25] Chạy development trực tiếp từ source
+
+- `package.json`: đổi backend trong `npm run dev` thành `node --watch server/index.mjs`.
+- Frontend vẫn do Vite phục vụ tại `http://localhost:5173` trực tiếp từ `src/`; lệnh development không tạo hoặc đọc bundle mới trong `dist`.
+- Khi sửa TypeScript/React, Vite HMR cập nhật giao diện; khi sửa `server/`, Node tự restart backend. Không chạy build cho thay đổi này theo yêu cầu.
+
+## [23:35] Thiết kế DB Chấm Công & Lương chuẩn hóa
+
+### 1. Phạm vi
+- Tách dữ liệu kỳ công, ngày lễ, ô chấm công và snapshot lương thành các bảng PostgreSQL có khóa ngoại/unique rõ ràng.
+- Backfill dữ liệu đang nằm trong `app_metadata` mà không xóa bảng `attendance` legacy.
+
+### 2. Thay đổi kỹ thuật
+- `server/config/dbSchema.mjs`: thêm `attendance_periods`, `attendance_holidays`, `attendance_entries`, `payroll_records`.
+- `server/domains/init/initDbService.mjs`: tạo schema idempotent, tạo index/ràng buộc và backfill dữ liệu cũ một lần theo `ON CONFLICT DO NOTHING`.
+- `server/domains/attendance/attendanceService.mjs`: ghi/xóa ô chấm công và lưu tạm ứng vào bảng chuẩn mới.
+- `server/domains/state/stateService.mjs`: đọc kỳ công, ngày lễ, attendance entries và payroll records từ PostgreSQL.
+- `docs/ATTENDANCE_DATABASE_DESIGN.md`: bổ sung sơ đồ ERD Mermaid và quy tắc dữ liệu trực quan.
+
+### 3. Kết quả kiểm tra & nghiệm thu
+- Không chạy build theo yêu cầu; kiểm tra trực tiếp bằng `npm run dev` với `node --watch` và PostgreSQL local.
+- Xác nhận DB: `1` kỳ công, `4` ngày lễ, `104` attendance entries, `5` payroll records.
+- Xác nhận state runtime: kỳ `2026-09`, `5` nhân sự có dữ liệu attendance theo `staffId`, không lỗi shape dữ liệu.
+- `git diff --check` đạt; cảnh báo line ending hiện hữu của các file Windows không phải lỗi nội dung.
+
+
+## [23:26] Lưu trữ 100% Sản phẩm & Xuất/Nhập kho vào PostgreSQL + Bổ sung Button "+ Tạo sản phẩm" (`GiftCreateItemModal`)
+
+### 1. Phạm vi & Yêu cầu
+- **Lưu trữ 100% vào cơ sở dữ liệu PostgreSQL (`finance_vpm.gift_items` & `finance_vpm.gift_movements`)**:
+  - Loại bỏ việc lưu dữ liệu `gifts` thô vào `localStorage` tại `AppContext.tsx`.
+  - Mọi thao tác tạo sản phẩm mới (`POST /api/gifts/items`) và tạo phiếu xuất/nhập (`POST /api/gifts/movements`) đều thực thi trực tiếp trong PostgreSQL ACID transaction (`withTransaction`) và trả về dữ liệu thực tế từ DB để cập nhật giao diện.
+  - Nếu tạo sản phẩm mới kèm số lượng tồn đầu (`initialQty > 0`), hệ thống tự động tạo bản ghi sản phẩm trong `gift_items` và phiếu nhập kho đầu kỳ trong `gift_movements` trong cùng 1 transaction.
+- **Button `+ Tạo sản phẩm` ngay phía trên các thẻ sản phẩm**:
+  - Bổ sung thanh tiêu đề **"Danh mục sản phẩm & ấn phẩm kho"** kèm nút **`+ Tạo sản phẩm`** ngay phía trên lưới thẻ vật phẩm trong `GiftsView.tsx`.
+  - Tạo `GiftCreateItemModal.tsx`: tự động gợi ý mã sản phẩm tiếp theo (`Q07`...), chọn nhanh đơn vị tính (`hộp`, `phần`, `cuốn`, `tờ`, `cái`, `bộ`), nhập đơn giá và số lượng nhập kho ban đầu.
+
+### 2. File thay đổi (Technical Changes)
+- [server/domains/gifts/giftsService.mjs](file:///e:/Project/finance-vpm/server/domains/gifts/giftsService.mjs): Bổ sung `getGiftItems()`, `createGiftItem()` (ACID transaction) và kiểm tra tồn kho trực tiếp trong DB tại `insertGiftMovement()`.
+- [server/domains/gifts/giftsRoutes.mjs](file:///e:/Project/finance-vpm/server/domains/gifts/giftsRoutes.mjs): Thêm endpoint `GET /api/gifts/items`, `POST /api/gifts/items`, và xử lý an toàn đồng bộ Sheet không làm gián đoạn kết quả lưu PostgreSQL.
+- [server/domains/state/stateService.mjs](file:///e:/Project/finance-vpm/server/domains/state/stateService.mjs): Chuẩn hóa `ORDER BY id ASC` cho `gift_items` và `ORDER BY d ASC, id ASC` cho `gift_movements`.
+- [src/services/apiClient.ts](file:///e:/Project/finance-vpm/src/services/apiClient.ts): Bổ sung `addGiftItem` và nâng cấp `addGiftMovement` trả về bản ghi đã lưu từ PostgreSQL.
+- [src/context/AppContextInstance.ts](file:///e:/Project/finance-vpm/src/context/AppContextInstance.ts), [src/context/AppContext.tsx](file:///e:/Project/finance-vpm/src/context/AppContext.tsx), [src/context/actions/useOperationsActions.ts](file:///e:/Project/finance-vpm/src/context/actions/useOperationsActions.ts): Bổ sung action `addGiftItem`, đồng bộ `gifts` trực tiếp từ PostgreSQL và gỡ bỏ lưu `gifts` trong `localStorage`.
+- [src/features/gifts/components/GiftCreateItemModal.tsx](file:///e:/Project/finance-vpm/src/features/gifts/components/GiftCreateItemModal.tsx): Component Modal tạo sản phẩm mới lưu trực tiếp vào PostgreSQL.
+- [src/features/gifts/GiftsView.tsx](file:///e:/Project/finance-vpm/src/features/gifts/GiftsView.tsx): Thêm thanh tiêu đề và nút **`+ Tạo sản phẩm`** phía trên lưới các thẻ sản phẩm.
+
+### 3. Kết quả kiểm thử & Nghiệm thu
+- **TypeScript & Build Check**: Chạy `npx tsc --noEmit` và `npm run build` hoàn thành thành công không có lỗi.
+
+
+## [23:38] Bổ sung cụm 3 tab phân loại sản phẩm (`Tất cả` / `Còn hàng` / `Hết hàng`) tại trang Quà & Ấn Phẩm (`GiftsView`)
+
+### 1. Phạm vi & Yêu cầu
+- Thay thế tiêu đề chữ tĩnh ở góc trái phía trên lưới thẻ sản phẩm bằng cụm **3 tab phân loại trạng thái tồn kho** kèm số đếm tự động:
+  1. **Tất cả (`all`)**: Hiển thị toàn bộ sản phẩm trong kho (`countAll`).
+  2. **Còn hàng (`in_stock`)**: Lọc các sản phẩm có tồn kho `balance > 0` (`countInStock`).
+  3. **Hết hàng (`out_of_stock`)**: Lọc các sản phẩm có tồn kho `balance <= 0` (`countOutOfStock`).
+- Hiển thị thông báo trạng thái trống gọn gàng khi danh sách lọc không có sản phẩm nào thỏa điều kiện.
+
+### 2. File thay đổi (Technical Changes)
+- [src/features/gifts/GiftsView.tsx](file:///e:/Project/finance-vpm/src/features/gifts/GiftsView.tsx): Thêm state `stockFilter`, tính toán `countAll`, `countInStock`, `countOutOfStock`, lọc `filteredItems` và render 3 nút phân loại ngay bên trái nút **`+ Tạo sản phẩm`**.
+
+### 3. Kết quả kiểm thử & Nghiệm thu
+- **TypeScript & Build Check**: Chạy `npx tsc --noEmit` và `npm run build` hoàn thành thành công không có lỗi.
+
+## [23:45] Khắc phục lỗi giả khi lưu Chấm Công & Lương
+
+### 1. Nguyên nhân
+- `POST /api/attendance` đã ghi dữ liệu vào PostgreSQL nhưng tiếp tục chờ `dispatchRealtimeSync()` gửi hai request sang Google Sheet.
+- Khi Google Sheet timeout/từ chối hoặc lỗi mạng, exception bị đẩy ra route và trả HTTP `500`, khiến frontend hiển thị `Không thể lưu chấm công` dù dữ liệu DB đã được lưu.
+
+### 2. Cách khắc phục
+- `server/domains/attendance/attendanceRoutes.mjs`: coi đồng bộ Google Sheet là side effect không chặn kết quả PostgreSQL; chỉ ghi cảnh báo nếu đồng bộ thất bại và vẫn trả `success: true`.
+- Không chạy build; tiếp tục chạy trực tiếp bằng `npm run dev` với Vite + `node --watch`.
+
+### 3. Kiểm tra
+- `node --check server/sheetSync.mjs` đạt.
+- `node --check server/domains/attendance/attendanceRoutes.mjs` đạt.
+- `git diff --check` đạt.
+
+## [23:55] Chuẩn hóa bảng Nhân sự, Chấm công và Phúc lợi
+
+### 1. Thiết kế dữ liệu
+- `staff`: lưu tên, phòng ban, ngày nhận việc và lương cơ bản; giữ khóa `id` nhân sự hiện hữu.
+- `attendance_entries`: lưu trạng thái chấm công hiện tại theo `staff_id + work_date`, kèm `logged_at`.
+- `attendance_logs`: nhật ký append-only, mỗi lần lưu/sửa/xóa ô chấm công tạo một dòng với `logged_at`.
+- `staff_benefits`: một dòng theo `month + staff_id`, gồm `holiday_sunday`, `ot`, `kpi`, `bhxh`, `tax`, `time`.
+
+### 2. Quy tắc ghi
+- Một thao tác chấm công chạy trong cùng transaction: cập nhật ô hiện tại, thêm log, tính lại `Lễ, CN` và cập nhật `Time`.
+- Ký hiệu `X` trên ngày lễ hoặc `2` vào Chủ nhật được ghi vào `staff_benefits.holiday_sunday`.
+- Xóa/sửa chấm công cũng ghi log và tính lại tổng phúc lợi để không cộng trùng.
+
+### 3. Kiểm tra
+- PostgreSQL đã có đủ bảng/cột; hiện có `5` nhân sự, `104` dòng chấm công và `5` dòng phúc lợi khởi tạo.
+- Kiểm tra transaction rollback tạo được đồng thời `attendance_logs` và `staff_benefits`, sau đó không giữ dữ liệu thử.
+- `node --check`, `npx tsc --noEmit` và `git diff --check` đạt; không chạy build `dist`.
+
+
+## [23:58] Tái thiết kế toàn diện trang Báo Cáo Tháng (`ReportView`)
+
+### 1. Phạm vi & Yêu cầu
+- **Phân rã kiến trúc theo Feature-Driven Architecture**: Tách `ReportView.tsx` monolithic cũ thành 4 sub-components chuyên biệt và 1 Thin Orchestrator.
+- **Cụm 4 Thẻ KPI Tài Chính Cấp Cao (`ReportKpiCards.tsx`)**:
+  - Đưa về lưới 4 cột chuẩn `ledger-kpi-grid`: **Tổng Thu Trong Kỳ**, **Tổng Chi Trong Kỳ**, **Lưu Chuyển Tiền Thuần (Net Cashflow = Thu − Chi)**, và **OPEX / Ngân Sách Tháng**.
+- **Bảng Đối Soát Số Dư Toàn Bộ Tài Khoản PostgreSQL (`ReportAccountBalanceTable.tsx`)**:
+  - Lấy toàn bộ tài khoản hoạt động từ `state.accounts` (`QUY`, `ACB`, `MB`, `TCB`...), hiển thị 6 cột đối soát: **Tài khoản**, **Đầu kỳ**, **Tổng Thu (+)**, **Tổng Chi (−)**, **Biến động ròng**, **Số dư cuối kỳ** và dòng **Tổng cộng thanh khoản toàn hệ thống**.
+  - Loại bỏ hoàn toàn việc hard-code 2 tài khoản `QUY`, `ACB` và xóa dòng ghi chú file Excel cũ.
+- **Kiểm Soát Chi Phí Vận Hành OPEX So Với Ngân Sách (`ReportOpexVsBudgetCard.tsx`)**:
+  - Hiển thị bảng đối chiếu từng danh mục OPEX (`state.costCategories`) kèm thanh tiến độ màu, tỷ trọng `%`, độ lệch âm khi vượt trần và nút điều hướng sang trang Ngân sách & Cost.
+- **Phân Tích Dòng Tiền Theo Loại Nghiệp Vụ & Tóm Tắt Liên Phân Hệ (`ReportCashflowBreakdown.tsx`)**:
+  - Bảng dòng tiền theo loại nghiệp vụ tích hợp bộ lọc **`Tất cả` · `Nguồn Thu` · `Khoản Chi`**, cột **Số giao dịch** và **Tỷ trọng (%)**.
+  - Khối điểm nhấn nghiệp vụ liên phân hệ trong kỳ: **Kế hoạch đã duyệt**, **Hợp đồng & Hóa đơn phát sinh**, **Xuất kho quà tặng & Khấu trừ TV 50%**.
+
+### 2. File thay đổi (Technical Changes)
+- [docs/REPORT_SPEC_KIT.md](file:///e:/Project/finance-vpm/docs/REPORT_SPEC_KIT.md): Tài liệu quy hoạch Spec-Kit & Pre-Flight Check.
+- [src/features/report/components/ReportKpiCards.tsx](file:///e:/Project/finance-vpm/src/features/report/components/ReportKpiCards.tsx): Component 4 thẻ KPI tài chính cấp cao.
+- [src/features/report/components/ReportAccountBalanceTable.tsx](file:///e:/Project/finance-vpm/src/features/report/components/ReportAccountBalanceTable.tsx): Component bảng đối soát số dư và biến động theo tài khoản PostgreSQL.
+- [src/features/report/components/ReportOpexVsBudgetCard.tsx](file:///e:/Project/finance-vpm/src/features/report/components/ReportOpexVsBudgetCard.tsx): Component bảng kiểm soát OPEX so với ngân sách tháng.
+- [src/features/report/components/ReportCashflowBreakdown.tsx](file:///e:/Project/finance-vpm/src/features/report/components/ReportCashflowBreakdown.tsx): Component phân tích dòng tiền theo nghiệp vụ và điểm nhấn liên phân hệ.
+- [src/features/report/ReportView.tsx](file:///e:/Project/finance-vpm/src/features/report/ReportView.tsx): Tái cấu trúc thành Thin Orchestrator kèm banner trạng thái sổ và nút In / Xuất PDF.
+
+### 3. Kết quả kiểm thử & Nghiệm thu
+- **TypeScript & Build Check**: Chạy `npx tsc --noEmit` và `npm run build` hoàn thành thành công không có lỗi.
+
+
+## [00:21] Hợp nhất Báo Cáo Tháng vào trang Tổng Quan (`OverviewView`) & Gỡ bỏ tab Báo Cáo Tháng dư thừa trên Menu
+
+### 1. Phạm vi & Yêu cầu
+- Gỡ bỏ mục menu **`Báo cáo tháng`** trên thanh điều hướng bên trái (`RailNav.tsx`) để tránh trùng lặp với trang **`Tổng quan`**.
+- Tích hợp trực tiếp 3 khối nghiệp vụ báo cáo tháng chuyên sâu vào trang **`Tổng quan`** (`OverviewView.tsx`):
+  1. **Bảng Đối Soát Số Dư & Biến Động Theo Tài Khoản (`ReportAccountBalanceTable`)**: Đầu kỳ + Tổng Thu (+) − Tổng Chi (−) = Cuối kỳ cho toàn bộ tài khoản PostgreSQL.
+  2. **Kiểm Soát Chi Phí Vận Hành (OPEX) So Với Ngân Sách (`ReportOpexVsBudgetCard`)**: Đối chiếu thực chi Sổ Cái với định mức ngân sách và độ lệch âm khi vượt trần.
+  3. **Phân Tích Dòng Tiền Theo Loại Nghiệp Vụ & Điểm Nhấn Liên Phân Hệ (`ReportCashflowBreakdown`)**: Bóc tách dòng tiền theo `TYPES` (Tất cả / Nguồn Thu / Khoản Chi) và tổng hợp nhanh số liệu Kế hoạch, Công nợ, Quà tặng.
+
+### 2. File thay đổi (Technical Changes)
+- [src/shared/components/layout/RailNav.tsx](file:///e:/Project/finance-vpm/src/shared/components/layout/RailNav.tsx): Loại bỏ mục `Báo cáo tháng` khỏi danh sách `navItems`.
+- [src/features/overview/OverviewView.tsx](file:///e:/Project/finance-vpm/src/features/overview/OverviewView.tsx): Tích hợp `ReportAccountBalanceTable`, `ReportOpexVsBudgetCard`, `ReportCashflowBreakdown` và nút `In / Xuất PDF Báo Cáo Tháng`.
+- [src/App.tsx](file:///e:/Project/finance-vpm/src/App.tsx) & [src/services/financeService.ts](file:///e:/Project/finance-vpm/src/services/financeService.ts): Điều hướng mọi liên kết báo cáo về thẳng `OverviewView`.
+
+### 3. Kết quả kiểm thử & Nghiệm thu
+- **TypeScript & Build Check**: Chạy `npx tsc --noEmit` và `npm run build` hoàn thành thành công không phát sinh lỗi.

@@ -2,7 +2,7 @@
  * API Client kết nối Frontend với Local Backend (PostgreSQL + Google Sheet Dual-Sync)
  */
 
-import { AppState, Transaction, Contract, AccountItem, Proposal, CostAdjustment, GiftMovement, AuthenticatedUser } from '../types';
+import { AppState, Transaction, Contract, AccountItem, Proposal, CostAdjustment, GiftItem, GiftMovement, AuthenticatedUser } from '../types';
 
 export const apiClient = {
   async login(username: string, password: string): Promise<{ user?: AuthenticatedUser; error?: string }> {
@@ -35,6 +35,54 @@ export const apiClient = {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     } catch {}
+  },
+
+  /**
+   * Persist a cost category in PostgreSQL.
+   */
+  async addCostCategory(category: { code: string; name: string }): Promise<boolean> {
+    try {
+      const res = await fetch('/api/cost-categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(category)
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Persist a monthly cost budget in PostgreSQL.
+   */
+  async updateCostBudget(month: string, category: string, amount: number): Promise<boolean> {
+    try {
+      const res = await fetch('/api/cost-budgets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month, category, amount, isEnabled: true })
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Persist a monthly cost category status in PostgreSQL.
+   */
+  async setCostBudgetStatus(month: string, category: string, isEnabled: boolean): Promise<boolean> {
+    try {
+      const res = await fetch('/api/cost-budgets/status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month, category, isEnabled })
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
   },
 
   /**
@@ -218,6 +266,34 @@ export const apiClient = {
     }
   },
 
+  async saveAttendanceBatch(entries: { staffId: string; dateIso: string; val: number | string }[]): Promise<boolean> {
+    try {
+      const res = await fetch('/api/attendance/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries })
+      });
+      return res.ok;
+    } catch (e) {
+      console.warn('[ApiClient] Lỗi lưu hàng loạt chấm công sang Backend:', e);
+      return false;
+    }
+  },
+
+  async updateStaffAdvance(staffId: string, advance: number, month: string): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/staff/${staffId}/advance`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ advance, month })
+      });
+      return res.ok;
+    } catch (e) {
+      console.warn('[ApiClient] Lỗi lưu tạm ứng nhân sự sang Backend:', e);
+      return false;
+    }
+  },
+
   /**
    * Đệ trình kế hoạch (Proposals)
    */
@@ -267,18 +343,50 @@ export const apiClient = {
   },
 
   /**
-   * Thêm biến động quà tặng
+   * Thêm sản phẩm quà tặng / ấn phẩm mới vào PostgreSQL
    */
-  async addGiftMovement(mv: GiftMovement): Promise<boolean> {
+  async addGiftItem(payload: {
+    id: string;
+    name: string;
+    unit: string;
+    price: number;
+    initialQty?: number;
+    who?: string;
+    note?: string;
+  }): Promise<{ success: boolean; data?: { item: GiftItem; initialMovement?: GiftMovement | null }; error?: string }> {
+    try {
+      const res = await fetch('/api/gifts/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Không thể lưu sản phẩm vào cơ sở dữ liệu.' };
+      }
+      return { success: true, data: json.data };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Không thể kết nối máy chủ cơ sở dữ liệu.' };
+    }
+  },
+
+  /**
+   * Thêm biến động quà tặng vào PostgreSQL
+   */
+  async addGiftMovement(mv: GiftMovement): Promise<{ success: boolean; data?: GiftMovement; error?: string }> {
     try {
       const res = await fetch('/api/gifts/movements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(mv)
       });
-      return res.ok;
-    } catch {
-      return false;
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Không thể ghi phiếu xuất/nhập vào cơ sở dữ liệu.' };
+      }
+      return { success: true, data: json.data };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Không thể kết nối máy chủ cơ sở dữ liệu.' };
     }
   },
 

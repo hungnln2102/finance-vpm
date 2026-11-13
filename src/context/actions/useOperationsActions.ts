@@ -22,43 +22,87 @@ export function useOperationsActions({
   addLog,
   showToast
 }: UseOperationsActionsProps) {
+  const addGiftItem = useCallback(
+    async (payload: {
+      id: string;
+      name: string;
+      unit: string;
+      price: number;
+      initialQty?: number;
+      who?: string;
+      note?: string;
+    }): Promise<boolean> => {
+      const res = await apiClient.addGiftItem(payload);
+      if (!res.success || !res.data?.item) {
+        showToast(res.error || 'Lỗi khi lưu sản phẩm mới vào PostgreSQL', 'error');
+        return false;
+      }
+
+      const { item: savedItem, initialMovement } = res.data;
+      setState((prev) => ({
+        ...prev,
+        gifts: {
+          items: [...prev.gifts.items, savedItem],
+          mv: initialMovement ? [...prev.gifts.mv, initialMovement] : prev.gifts.mv
+        }
+      }));
+
+      addLog(`Tạo sản phẩm mới ${savedItem.id} · ${savedItem.name}`);
+      showToast(`Đã lưu sản phẩm ${savedItem.id} · ${savedItem.name} vào cơ sở dữ liệu`, 'success');
+      return true;
+    },
+    [addLog, showToast, setState]
+  );
+
   const addGiftMovement = useCallback(
-    (mv: Omit<GiftMovement, 'd'>) => {
+    async (mv: Omit<GiftMovement, 'd'>): Promise<boolean> => {
       const newMv: GiftMovement = {
         ...mv,
         d: TODAY
       };
 
+      const res = await apiClient.addGiftMovement(newMv);
+      if (!res.success || !res.data) {
+        showToast(res.error || 'Lỗi khi lưu phiếu kho vào PostgreSQL', 'error');
+        return false;
+      }
+
+      const savedMv = res.data;
       setState((prev) => ({
         ...prev,
         gifts: {
           ...prev.gifts,
-          mv: [...prev.gifts.mv, newMv]
+          mv: [...prev.gifts.mv, savedMv]
         }
       }));
 
-      apiClient.addGiftMovement(newMv);
-      const itemObj = state.gifts.items.find((i) => i.id === mv.item);
-      const name = itemObj ? itemObj.name : mv.item;
-      addLog(`${mv.kind === 'out' ? 'Xuất' : 'Nhập'} ${mv.qty} ${name}`);
-      showToast(`Đã ghi phiếu ${mv.kind === 'out' ? 'xuất' : 'nhập'}`, 'success');
+      const itemObj = state.gifts.items.find((i) => i.id === savedMv.item);
+      const name = itemObj ? itemObj.name : savedMv.item;
+      addLog(`${savedMv.kind === 'out' ? 'Xuất' : 'Nhập'} ${savedMv.qty} ${name}`);
+      showToast(`Đã ghi phiếu ${savedMv.kind === 'out' ? 'xuất' : 'nhập'} vào cơ sở dữ liệu`, 'success');
+      return true;
     },
     [state.gifts.items, addLog, showToast, setState]
   );
 
   const cycleAttendance = useCallback(
-    (staffId: string, dateIso: string) => {
+    async (staffId: string, dateIso: string) => {
       const staffMember = state.staff.find((s) => s.id === staffId);
       if (!staffMember) return;
 
       const cycle: (number | string | undefined)[] = [undefined, 1, 0.5, 'L', 'X', 2];
+      const currentRecord = state.att[staffId] || { days: {} };
+      const currentVal = currentRecord.days[dateIso];
+      const nextIdx = (cycle.indexOf(currentVal) + 1) % cycle.length;
+      const nextVal = cycle[nextIdx];
+      const saved = await apiClient.saveAttendance(staffId, dateIso, nextVal ?? '', staffMember.name);
+      if (!saved) {
+        showToast('Không thể lưu chấm công. Vui lòng thử lại.', 'error');
+        return;
+      }
 
       setState((prev) => {
-        const staffName = staffMember.name;
-        const currentRecord = prev.att[staffName] || { days: {} };
-        const currentVal = currentRecord.days[dateIso];
-        const nextIdx = (cycle.indexOf(currentVal) + 1) % cycle.length;
-        const nextVal = cycle[nextIdx];
+        const currentRecord = prev.att[staffId] || { days: {} };
 
         const updatedDays = { ...currentRecord.days };
         if (nextVal === undefined) {
@@ -67,42 +111,64 @@ export function useOperationsActions({
           updatedDays[dateIso] = nextVal;
         }
 
-        apiClient.saveAttendance(staffId, dateIso, nextVal ?? '');
-
         return {
           ...prev,
           att: {
             ...prev.att,
-            [staffName]: { days: updatedDays }
+            [staffId]: { days: updatedDays }
           }
         };
       });
     },
-    [state.staff, setState]
+    [state.staff, state.att, setState, showToast]
   );
 
-  const applyAttendanceSuggestions = useCallback(() => {
+  const applyAttendanceSuggestions = useCallback(async () => {
     const alerts = detectAttendanceAlerts(state.staff, state.att, state.attMonth, state.holidays);
+    const updates = alerts.map((alert) => ({
+      staffId: alert.staffId,
+      dateIso: alert.d,
+      val: state.holidays.includes(alert.d) ? 'L' : 2
+    }));
+    if (updates.length === 0) return;
+
+    const saved = await apiClient.saveAttendanceBatch(updates);
+    if (!saved) {
+      showToast('Không thể lưu đề xuất chấm công. Vui lòng thử lại.', 'error');
+      return;
+    }
+
     setState((prev) => {
       const newAtt = { ...prev.att };
-      for (const a of alerts) {
-        if (!newAtt[a.s]) newAtt[a.s] = { days: {} };
-        newAtt[a.s].days[a.d] = prev.holidays.includes(a.d) ? 'L' : 2;
+      for (const update of updates) {
+        const currentRecord = newAtt[update.staffId] || { days: {} };
+        newAtt[update.staffId] = {
+          days: {
+            ...currentRecord.days,
+            [update.dateIso]: update.val
+          }
+        };
       }
       return { ...prev, att: newAtt };
     });
-    addLog('Sửa chấm công ngày lễ, chủ nhật T9');
+    addLog(`Sửa chấm công ngày lễ, chủ nhật ${state.attMonth}`);
     showToast('Đã áp dụng đề xuất chấm công', 'success');
   }, [state.staff, state.att, state.attMonth, state.holidays, addLog, showToast, setState]);
 
   const updateStaffAdvance = useCallback(
-    (staffId: string, advance: number) => {
+    async (staffId: string, advance: number) => {
+      const normalizedAdvance = Math.max(0, advance || 0);
+      const saved = await apiClient.updateStaffAdvance(staffId, normalizedAdvance, state.attMonth);
+      if (!saved) {
+        showToast('Không thể lưu tạm ứng. Vui lòng thử lại.', 'error');
+        return;
+      }
       setState((prev) => ({
         ...prev,
-        staff: prev.staff.map((s) => (s.id === staffId ? { ...s, advance: Math.max(0, advance) } : s))
+        staff: prev.staff.map((s) => (s.id === staffId ? { ...s, advance: normalizedAdvance } : s))
       }));
     },
-    [setState]
+    [setState, showToast, state.attMonth]
   );
 
   const updateClosing = useCallback(
@@ -183,6 +249,7 @@ export function useOperationsActions({
   }, [setState]);
 
   return {
+    addGiftItem,
     addGiftMovement,
     cycleAttendance,
     applyAttendanceSuggestions,

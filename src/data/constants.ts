@@ -1,4 +1,4 @@
-import { Role, RoleDefinition, OpexCategoryMap, TransactionTypeMap, AccountMap } from '../types';
+import { Role, RoleDefinition, TransactionTypeMap, AccountMap } from '../types';
 import { getRealToday } from '../utils/formatters';
 
 export const TODAY = getRealToday();
@@ -30,14 +30,6 @@ export const TYPES: TransactionTypeMap = {
   TAM_UNG: {l: "Tạm ứng nhân sự", dir: "out"}
 };
 
-export const CATS: OpexCategoryMap = {
-  LUONG: "Lương, thưởng",
-  VP: "Văn phòng & vận hành",
-  SUKIEN: "Sự kiện, hội thảo, quảng cáo",
-  CSKH: "Chăm sóc khách hàng",
-  NOIBO: "Nội bộ & tiếp khách",
-  KHAC: "Chi khác"
-};
 
 export const ROLES: Record<Role, string> = {
   operator: "🟢 Nhập liệu (Operator)",

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useApp } from './../../context/useApp';
-import { CATS } from '../../data/constants';
 import { mon } from '../../utils/formatters';
 import { BudgetKpiCards } from './components/BudgetKpiCards';
 import { BudgetVarianceTable } from './components/BudgetVarianceTable';
@@ -36,7 +35,7 @@ export const BudgetControlView: React.FC = () => {
     actualByCat[c] = (actualByCat[c] || 0) + t.amt;
   }
 
-  const categoryNames = { ...CATS, ...(state.costCategories?.[m] || {}) };
+  const categoryNames = state.costCategories;
   const allCategories = Array.from(new Set([
     ...Object.keys(categoryNames),
     ...Object.keys(monthBudget),
@@ -93,6 +92,7 @@ export const BudgetControlView: React.FC = () => {
         uiRole={ui.role}
         onApprove={approveCostAdjustment}
         onReject={rejectCostAdjustment}
+        categoryNames={categoryNames}
       />
 
       {/* Modal Lập Phiếu Thêm/Điều Chỉnh Cost */}

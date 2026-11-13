@@ -71,7 +71,16 @@ export interface AppContextType {
   toggleCostCategoryStatus: (month: string, category: string) => void;
   addContract: (data: Omit<Contract, 'id'>) => void;
   approveDiscount: (id: string) => void;
-  addGiftMovement: (mv: Omit<GiftMovement, 'd'>) => void;
+  addGiftItem: (data: {
+    id: string;
+    name: string;
+    unit: string;
+    price: number;
+    initialQty?: number;
+    who?: string;
+    note?: string;
+  }) => Promise<boolean>;
+  addGiftMovement: (mv: Omit<GiftMovement, 'd'>) => Promise<boolean>;
   cycleAttendance: (staffId: string, dateIso: string) => void;
   applyAttendanceSuggestions: () => void;
   updateStaffAdvance: (staffId: string, advance: number) => void;

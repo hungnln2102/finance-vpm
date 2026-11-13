@@ -66,11 +66,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...prev,
             ...dbData,
             tx: Array.isArray(dbData.tx) ? dbData.tx : prev.tx,
-            contracts: Array.isArray(dbData.contracts) && dbData.contracts.length > 0 ? dbData.contracts : prev.contracts,
-            proposals: Array.isArray(dbData.proposals) && dbData.proposals.length > 0 ? dbData.proposals : prev.proposals,
-            costAdjustments: Array.isArray(dbData.costAdjustments) && dbData.costAdjustments.length > 0 ? dbData.costAdjustments : prev.costAdjustments,
-            staff: prev.staff,
-            accounts: Array.isArray(accountsData) && accountsData.length > 0 ? accountsData : (dbData.accounts || prev.accounts)
+            contracts: Array.isArray(dbData.contracts) ? dbData.contracts : prev.contracts,
+            proposals: Array.isArray(dbData.proposals) ? dbData.proposals : prev.proposals,
+            costAdjustments: Array.isArray(dbData.costAdjustments) ? dbData.costAdjustments : prev.costAdjustments,
+            costCategories: dbData.costCategories || {},
+            disabledCostCategories: dbData.disabledCostCategories || {},
+            staff: Array.isArray(dbData.staff) ? dbData.staff : prev.staff,
+            gifts: {
+              items: Array.isArray(dbData.gifts?.items) ? dbData.gifts.items : [],
+              mv: Array.isArray(dbData.gifts?.mv) ? dbData.gifts.mv : []
+            },
+            accounts: Array.isArray(accountsData) ? accountsData : (dbData.accounts || prev.accounts)
           }));
           showToast('Đã kết nối PostgreSQL (schema: finance_vpm)', 'success');
         } else {
@@ -98,9 +104,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           state: {
             tx: state.tx,
             contracts: state.contracts,
-            gifts: state.gifts,
             budget: state.budget,
             costCategories: state.costCategories,
+            disabledCostCategories: state.disabledCostCategories,
             costAdjustments: state.costAdjustments,
             webhooks: state.webhooks,
             proposals: state.proposals,

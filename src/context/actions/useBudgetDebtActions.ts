@@ -77,6 +77,7 @@ export function useBudgetDebtActions({
       });
 
       apiClient.addCostAdjustment(approvedAdj);
+      apiClient.updateCostBudget(adj.month, adj.category, adj.newBudget);
       addLog(`Master phê duyệt điều chỉnh cost ${adj.id}`);
       showToast('Đã phê duyệt điều chỉnh định mức cost', 'success');
     },
@@ -119,6 +120,8 @@ export function useBudgetDebtActions({
           disabledCostCategories: map
         };
       });
+      const isEnabled = (state.disabledCostCategories?.[month] || []).includes(category);
+      apiClient.setCostBudgetStatus(month, category, isEnabled);
       addLog(`Thay đổi trạng thái On/Off chi phí ${category} tháng ${month}`);
     },
     [addLog, setState]
@@ -141,6 +144,7 @@ export function useBudgetDebtActions({
           }
         };
       });
+      apiClient.updateCostBudget(month, category, amount);
       addLog(`Giao ngân sách ${monthLabel(month)}`);
       showToast('Đã lưu ngân sách', 'success');
     },
@@ -155,19 +159,13 @@ export function useBudgetDebtActions({
       if (!categoryCode || !categoryName || amount <= 0) return;
 
       setState((prev) => {
-        const existingCategories = prev.costCategories?.[month] || {};
-        if (existingCategories[categoryCode] || prev.budget[month]?.[categoryCode] !== undefined) {
-          return prev;
-        }
+        if (prev.costCategories[categoryCode]) return prev;
 
         return {
           ...prev,
           costCategories: {
             ...prev.costCategories,
-            [month]: {
-              ...existingCategories,
-              [categoryCode]: categoryName
-            }
+            [categoryCode]: categoryName
           },
           budget: {
             ...prev.budget,
@@ -178,6 +176,10 @@ export function useBudgetDebtActions({
           }
         };
       });
+      void (async () => {
+        const categorySaved = await apiClient.addCostCategory({ code: categoryCode, name: categoryName });
+        if (categorySaved) await apiClient.updateCostBudget(month, categoryCode, amount);
+      })();
       addLog(`Thêm danh mục chi phí ${categoryCode} · ${categoryName} tháng ${month}`);
       showToast('Đã thêm danh mục cost', 'success');
     },

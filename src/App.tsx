@@ -11,7 +11,6 @@ import { BudgetControlView } from './features/budget/BudgetControlView';
 import { DebtView } from './features/debt/DebtView';
 import { GiftsView } from './features/gifts/GiftsView';
 import { PayrollView } from './features/payroll/PayrollView';
-import { ReportView } from './features/report/ReportView';
 import { ClosingView } from './features/closing/ClosingView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginView } from './features/auth/LoginView';
@@ -31,14 +30,13 @@ const MainWorkstation: React.FC = () => {
       <main className="main-content">
         <TopHeader />
         
-        {ui.view === 'overview' && <OverviewView />}
+        {(ui.view === 'overview' || ui.view === 'report') && <OverviewView />}
         {ui.view === 'ledger' && <LedgerView />}
         {ui.view === 'proposals' && <ProposalsView />}
         {ui.view === 'budget' && <BudgetControlView />}
         {ui.view === 'debt' && <DebtView />}
         {ui.view === 'gifts' && <GiftsView />}
         {ui.view === 'payroll' && <PayrollView />}
-        {ui.view === 'report' && <ReportView />}
         {ui.view === 'closing' && <ClosingView />}
       </main>
       <Toast />

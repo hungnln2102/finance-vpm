@@ -8,7 +8,6 @@ import {
   CreditCard, 
   Gift, 
   Users, 
-  BarChart3, 
   Lock,
   Send,
   Target,
@@ -39,7 +38,6 @@ export const RailNav: React.FC = () => {
     { id: 'debt', label: 'Công nợ', icon: <CreditCard size={18} /> },
     { id: 'gifts', label: 'Quà & ấn phẩm', icon: <Gift size={18} /> },
     { id: 'payroll', label: 'Chấm công & lương', icon: <Users size={18} /> },
-    { id: 'report', label: 'Báo cáo tháng', icon: <BarChart3 size={18} /> },
     { id: 'closing', label: 'Khóa sổ tháng', icon: <Lock size={18} /> }
   ];
 

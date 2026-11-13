@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from './../../../context/useApp';
 import { Transaction, TransactionType } from '../../../types';
-import { CATS, APPROVE_LIMIT, TODAY } from '../../../data/constants';
+import { APPROVE_LIMIT, TODAY } from '../../../data/constants';
 import { fmt, mon } from '../../../utils/formatters';
 import { PlusCircle, Edit3, X } from 'lucide-react';
 
@@ -19,6 +19,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   currentMonth
 }) => {
   const { state, addTransaction, updateTransaction } = useApp();
+  const categoryNames = state.costCategories;
 
   // Danh sách tài khoản đang kích hoạt (ON) từ Database (state.accounts), fallback về danh mục chuẩn
   const activeAccountsFromDb = (state.accounts || []).filter((a) => a.status === 'active');
@@ -269,7 +270,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       onChange={(e) => setCat(e.target.value)}
                     >
                       <option value="">— Chọn nhóm chi phí (Bắt buộc) —</option>
-                      {Object.entries(CATS).map(([k, label]) => (
+                      {Object.entries(categoryNames).map(([k, label]) => (
                         <option key={k} value={k}>{label} ({k})</option>
                       ))}
                     </select>

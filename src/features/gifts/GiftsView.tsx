@@ -1,67 +1,71 @@
 import React, { useState } from 'react';
 import { useApp } from './../../context/useApp';
 import { GiftItem } from '../../types';
-import { fmt, mil, dmy, fm } from '../../utils/formatters';
+import { fmt, dmy, fm } from '../../utils/formatters';
 import { calculateGiftStock } from '../../services/inventoryService';
-import { PlusCircle, Package, ArrowDownRight, ArrowUpRight, ShieldCheck } from 'lucide-react';
+import { PlusCircle, PackagePlus, Package, ArrowDownRight, ArrowUpRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import { GiftItemCard } from './components/GiftItemCard';
+import { GiftDetailModal } from './components/GiftDetailModal';
+import { GiftMovementModal } from './components/GiftMovementModal';
+import { GiftCreateItemModal } from './components/GiftCreateItemModal';
+
+type GiftStockFilter = 'all' | 'in_stock' | 'out_of_stock';
 
 export const GiftsView: React.FC = () => {
-  const { state, canDo, addGiftMovement, showToast } = useApp();
+  const { state, canDo, addGiftItem, addGiftMovement, showToast } = useApp();
 
   const stock = calculateGiftStock(state.gifts);
 
-  // Form state
-  const [kind, setKind] = useState<'out' | 'in'>('out');
-  const [item, setItem] = useState(state.gifts.items[0]?.id || 'Q01');
-  const [qty, setQty] = useState<number | ''>('');
-  const [to, setTo] = useState('TV');
-  const [who, setWho] = useState('');
-  const [note, setNote] = useState('');
+  // Filter & Modal states
+  const [stockFilter, setStockFilter] = useState<GiftStockFilter>('all');
+  const [selectedItem, setSelectedItem] = useState<GiftItem | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCreateItemModal, setShowCreateItemModal] = useState(false);
+  const [createInitialItemId, setCreateInitialItemId] = useState<string | undefined>(undefined);
 
-  // Total Calculations
+  const canManageGift = canDo('gift');
+
+  // Total Calculations & Filter Counts
   let totalInValue = 0;
   let totalOutValue = 0;
   let totalStockValue = 0;
   let totalTvDeduction = 0;
+  let countInStock = 0;
+  let countOutOfStock = 0;
 
   for (const it of state.gifts.items) {
     const st = stock[it.id] || { in: 0, out: 0, balance: 0 };
     totalInValue += st.in * it.price;
     totalOutValue += st.out * it.price;
     totalStockValue += (st.in - st.out) * it.price;
+    if (st.balance > 0) {
+      countInStock++;
+    } else {
+      countOutOfStock++;
+    }
   }
+
+  const countAll = state.gifts.items.length;
+
+  const filteredItems = state.gifts.items.filter((it) => {
+    const bal = stock[it.id]?.balance || 0;
+    if (stockFilter === 'in_stock') return bal > 0;
+    if (stockFilter === 'out_of_stock') return bal <= 0;
+    return true;
+  });
 
   for (const m of state.gifts.mv) {
     if (m.kind === 'out' && m.to === 'TV') {
       const it = state.gifts.items.find((i) => i.id === m.item);
       if (it) {
-        totalTvDeduction += (m.qty * it.price) * 0.5;
+        totalTvDeduction += m.qty * it.price * 0.5;
       }
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!qty || Number(qty) <= 0 || !who.trim()) return;
-
-    const currentStock = stock[item] || { in: 0, out: 0, balance: 0 };
-    if (kind === 'out' && Number(qty) > currentStock.balance) {
-      showToast(`Không đủ tồn kho: hiện chỉ còn ${currentStock.balance}`, 'error');
-      return;
-    }
-
-    addGiftMovement({
-      item,
-      qty: Number(qty),
-      kind,
-      to: kind === 'out' ? to : undefined,
-      who: who.trim(),
-      note: note.trim()
-    });
-
-    setQty('');
-    setWho('');
-    setNote('');
+  const handleOpenCreateModal = (itemId?: string) => {
+    setCreateInitialItemId(itemId);
+    setShowCreateModal(true);
   };
 
   return (
@@ -101,114 +105,158 @@ export const GiftsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Stock Cards Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '14px' }}>
-        {state.gifts.items.map((it) => {
-          const st = stock[it.id] || { in: 0, out: 0, balance: 0 };
-          const remain = st.in - st.out;
+      {/* Khu vực các thẻ sản phẩm kèm Bộ lọc phân loại (Tất cả / Còn hàng / Hết hàng) & Button "+ Tạo sản phẩm" */}
+      <section style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px'
+          }}
+        >
+          {/* Cụm hạng mục phân loại: Tất cả · Còn hàng · Hết hàng */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setStockFilter('all')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '7px',
+                padding: '7px 14px',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '13px',
+                fontWeight: stockFilter === 'all' ? 700 : 500,
+                background: stockFilter === 'all' ? 'var(--teal-soft)' : 'var(--panel)',
+                color: stockFilter === 'all' ? 'var(--teal)' : 'var(--muted)',
+                border: stockFilter === 'all' ? '1px solid var(--teal)' : '1px solid var(--line)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Package size={14} />
+              <span>Tất cả ({countAll})</span>
+            </button>
 
-          return (
-            <div key={it.id} className="card-box" style={{ padding: '14px 16px', gap: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="chip teal">{it.id}</span>
-                <span style={{ fontSize: '12px', color: 'var(--muted)', fontFamily: 'var(--f-num)' }}>
-                  {fmt(it.price)} đ/{it.unit}
-                </span>
-              </div>
-              <div style={{ fontWeight: 600, fontSize: '15px' }}>{it.name}</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '4px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                  Nhập: <b>{st.in}</b> · Xuất: <b>{st.out}</b>
-                </span>
-                <span style={{ fontSize: '16px', fontWeight: 700, color: remain < 5 ? 'var(--bad)' : 'var(--good)' }}>
-                  Tồn: {remain} {it.unit}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            <button
+              type="button"
+              onClick={() => setStockFilter('in_stock')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '7px',
+                padding: '7px 14px',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '13px',
+                fontWeight: stockFilter === 'in_stock' ? 700 : 500,
+                background: stockFilter === 'in_stock' ? 'var(--good-soft)' : 'var(--panel)',
+                color: stockFilter === 'in_stock' ? 'var(--good)' : 'var(--muted)',
+                border: stockFilter === 'in_stock' ? '1px solid var(--good)' : '1px solid var(--line)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <CheckCircle2 size={14} />
+              <span>Còn hàng ({countInStock})</span>
+            </button>
 
-      {/* Form Section */}
-      {canDo('gift') && (
-        <section className="card-box" style={{ borderLeft: '4px solid var(--teal)' }}>
-          <h2 className="card-title">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <PlusCircle size={18} style={{ color: 'var(--teal)' }} />
-              <span>Tạo phiếu xuất / nhập quà & ấn phẩm</span>
-            </div>
-            <small>xuất cho Tư vấn sẽ tự động tính khấu trừ 50% giá trị quà</small>
-          </h2>
+            <button
+              type="button"
+              onClick={() => setStockFilter('out_of_stock')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '7px',
+                padding: '7px 14px',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '13px',
+                fontWeight: stockFilter === 'out_of_stock' ? 700 : 500,
+                background: stockFilter === 'out_of_stock' ? 'var(--bad-soft)' : 'var(--panel)',
+                color: stockFilter === 'out_of_stock' ? 'var(--bad)' : 'var(--muted)',
+                border: stockFilter === 'out_of_stock' ? '1px solid var(--bad)' : '1px solid var(--line)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <AlertCircle size={14} />
+              <span>Hết hàng ({countOutOfStock})</span>
+            </button>
+          </div>
 
-          <form onSubmit={handleSubmit} className="form-grid">
-            <div className="form-group">
-              <label>Loại phiếu</label>
-              <select value={kind} onChange={(e) => setKind(e.target.value as 'out' | 'in')}>
-                <option value="out">Xuất kho</option>
-                <option value="in">Nhập kho</option>
-              </select>
-            </div>
+          {canManageGift && (
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => setShowCreateItemModal(true)}
+            >
+              <PackagePlus size={16} />
+              <span>+ Tạo sản phẩm</span>
+            </button>
+          )}
+        </div>
 
-            <div className="form-group">
-              <label>Vật phẩm</label>
-              <select value={item} onChange={(e) => setItem(e.target.value)}>
-                {state.gifts.items.map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.id} · {it.name} (Tồn: {stock[it.id]?.balance || 0} {it.unit})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Số lượng</label>
-              <input
-                type="number"
-                min="1"
-                required
-                placeholder="vd 10"
-                value={qty}
-                onChange={(e) => setQty(e.target.value === '' ? '' : Number(e.target.value))}
-              />
-            </div>
-
-            {kind === 'out' && (
-              <div className="form-group">
-                <label>Đối tượng nhận</label>
-                <select value={to} onChange={(e) => setTo(e.target.value)}>
-                  <option value="TV">Tư vấn (TV - trừ 50% lương)</option>
-                  <option value="SK">Sự kiện, hội thảo (SK)</option>
-                  <option value="KH">Khách hàng trực tiếp (KH)</option>
-                </select>
-              </div>
-            )}
-
-            <div className="form-group wide">
-              <label>Người nhận / Mục đích</label>
-              <input
-                type="text"
-                required
-                placeholder="vd Nguyễn Hữu Thạch (Tặng khách dịp trung thu)"
-                value={who}
-                onChange={(e) => setWho(e.target.value)}
-              />
-            </div>
-
-            <div style={{ marginTop: '6px' }}>
-              <button type="submit" className="btn primary">
-                {kind === 'out' ? 'Ghi phiếu xuất' : 'Ghi phiếu nhập'}
-              </button>
-            </div>
-          </form>
-        </section>
-      )}
+        {filteredItems.length === 0 ? (
+          <div
+            className="card-box"
+            style={{
+              padding: '28px 18px',
+              textAlign: 'center',
+              color: 'var(--muted)',
+              fontSize: '13.5px'
+            }}
+          >
+            {stockFilter === 'in_stock'
+              ? 'Hiện chưa có sản phẩm nào trong trạng thái Còn hàng.'
+              : stockFilter === 'out_of_stock'
+                ? 'Không có sản phẩm nào bị Hết hàng.'
+                : 'Chưa có sản phẩm nào trong kho.'}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
+            {filteredItems.map((it) => {
+              const st = stock[it.id] || { in: 0, out: 0, balance: 0 };
+              return (
+                <GiftItemCard
+                  key={it.id}
+                  item={it}
+                  stock={st}
+                  onClick={(clickedItem) => setSelectedItem(clickedItem)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* Movement History Table */}
       <section className="card-box">
-        <h2 className="card-title">
-          <span>Lịch sử xuất / nhập kho</span>
-          <small>{state.gifts.mv.length} phiếu</small>
-        </h2>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px'
+          }}
+        >
+          <h2 className="card-title" style={{ margin: 0 }}>
+            <span>Lịch sử xuất / nhập kho</span>
+            <small>{state.gifts.mv.length} phiếu</small>
+          </h2>
+
+          {canManageGift && (
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => handleOpenCreateModal()}
+            >
+              <PlusCircle size={16} />
+              <span>+ Tạo phiếu xuất / nhập</span>
+            </button>
+          )}
+        </div>
 
         <div className="table-scroll">
           <table>
@@ -284,6 +332,35 @@ export const GiftsView: React.FC = () => {
           </table>
         </div>
       </section>
+
+      {/* Modal Chi Tiết Lịch Sử Từng Vật Phẩm */}
+      <GiftDetailModal
+        item={selectedItem}
+        stock={selectedItem ? stock[selectedItem.id] || { in: 0, out: 0, balance: 0 } : { in: 0, out: 0, balance: 0 }}
+        movements={state.gifts.mv}
+        canCreate={canManageGift}
+        onClose={() => setSelectedItem(null)}
+        onOpenCreateForItem={(itemId) => handleOpenCreateModal(itemId)}
+      />
+
+      {/* Modal Tạo Sản Phẩm Mới (Lưu trực tiếp PostgreSQL) */}
+      <GiftCreateItemModal
+        show={showCreateItemModal}
+        existingItems={state.gifts.items}
+        onClose={() => setShowCreateItemModal(false)}
+        onSubmit={(data) => addGiftItem(data)}
+      />
+
+      {/* Modal Tạo Phiếu Xuất / Nhập Kho */}
+      <GiftMovementModal
+        show={showCreateModal}
+        items={state.gifts.items}
+        stock={stock}
+        initialItemId={createInitialItemId}
+        onClose={() => setShowCreateModal(false)}
+        onSubmit={(mv) => addGiftMovement(mv)}
+        onError={(msg) => showToast(msg, 'error')}
+      />
     </div>
   );
 };

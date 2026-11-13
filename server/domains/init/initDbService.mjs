@@ -1,12 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { pool, SCHEMA } from '../../config/dbPool.mjs';
 import { recalculateMonthlyBalances } from '../ledger/ledgerService.mjs';
 import { bootstrapMasterAccount } from '../auth/authService.mjs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 /**
  * Khởi tạo Schema và các bảng dữ liệu trong PostgreSQL (finance_vpm)
@@ -125,11 +120,15 @@ export async function initDb() {
       CREATE TABLE IF NOT EXISTS ${SCHEMA}.staff (
         id VARCHAR(32) PRIMARY KEY,
         name VARCHAR(128) NOT NULL,
+        department VARCHAR(128) NOT NULL DEFAULT '',
+        hire_date DATE,
         role VARCHAR(64) DEFAULT '',
         base_salary NUMERIC(15, 2) DEFAULT 0,
         allowance NUMERIC(15, 2) DEFAULT 0,
         status VARCHAR(32) DEFAULT 'active'
       );
+      ALTER TABLE ${SCHEMA}.staff ADD COLUMN IF NOT EXISTS department VARCHAR(128) NOT NULL DEFAULT '';
+      ALTER TABLE ${SCHEMA}.staff ADD COLUMN IF NOT EXISTS hire_date DATE;
     `);
 
     // 6. Proposals
@@ -168,13 +167,61 @@ export async function initDb() {
       );
     `);
 
-    // 8. App Metadata
+    // 8. Cost categories and monthly budgets
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ${SCHEMA}.cost_categories (
+        code VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(128) NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS ${SCHEMA}.cost_budgets (
+        month VARCHAR(16) NOT NULL,
+        category_code VARCHAR(64) NOT NULL REFERENCES ${SCHEMA}.cost_categories(code),
+        amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        is_enabled BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (month, category_code)
+      );
+      CREATE INDEX IF NOT EXISTS idx_cost_budgets_month ON ${SCHEMA}.cost_budgets(month);
+    `);
+
+    // 9. App Metadata
     await client.query(`
       CREATE TABLE IF NOT EXISTS ${SCHEMA}.app_metadata (
         key VARCHAR(64) PRIMARY KEY,
         value JSONB NOT NULL,
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+    `);
+
+    // Register any legacy budget code before preserving its monthly amount.
+    await client.query(`
+      INSERT INTO ${SCHEMA}.cost_categories (code, name)
+      SELECT DISTINCT category_code, category_code
+      FROM ${SCHEMA}.app_metadata,
+           LATERAL jsonb_each(value) AS month_entry(budget_month, categories),
+           LATERAL jsonb_each_text(categories) AS category_entry(category_code, budget_amount)
+      WHERE key = 'budget'
+        AND jsonb_typeof(value) = 'object'
+      ON CONFLICT (code) DO NOTHING;
+    `);
+
+    // Migrate the legacy JSON budget map before removing the obsolete metadata key.
+    await client.query(`
+      INSERT INTO ${SCHEMA}.cost_budgets (month, category_code, amount)
+      SELECT budget_month, category_code, budget_amount::numeric
+      FROM ${SCHEMA}.app_metadata,
+           LATERAL jsonb_each(value) AS month_entry(budget_month, categories),
+           LATERAL jsonb_each_text(categories) AS category_entry(category_code, budget_amount)
+      WHERE key = 'budget'
+        AND jsonb_typeof(value) = 'object'
+      ON CONFLICT (month, category_code) DO UPDATE SET
+        amount = EXCLUDED.amount,
+        updated_at = NOW();
+      DELETE FROM ${SCHEMA}.app_metadata WHERE key = 'budget';
     `);
 
     // 9. Monthly Balances
@@ -249,10 +296,210 @@ export async function initDb() {
       CREATE INDEX IF NOT EXISTS idx_att_date ON ${SCHEMA}.attendance(date);
     `);
 
+    // 13. Attendance and payroll source-of-truth tables
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ${SCHEMA}.attendance_periods (
+        month VARCHAR(7) PRIMARY KEY,
+        standard_days NUMERIC(6, 2) NOT NULL DEFAULT 0,
+        status VARCHAR(16) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'locked', 'paid')),
+        note TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS ${SCHEMA}.attendance_holidays (
+        id BIGSERIAL PRIMARY KEY,
+        month VARCHAR(7) NOT NULL REFERENCES ${SCHEMA}.attendance_periods(month) ON DELETE CASCADE,
+        holiday_date DATE NOT NULL,
+        label VARCHAR(255) NOT NULL DEFAULT 'Ngày lễ',
+        is_paid BOOLEAN NOT NULL DEFAULT TRUE,
+        UNIQUE (month, holiday_date)
+      );
+      CREATE INDEX IF NOT EXISTS idx_attendance_holidays_month ON ${SCHEMA}.attendance_holidays(month);
+
+      CREATE TABLE IF NOT EXISTS ${SCHEMA}.attendance_entries (
+        id BIGSERIAL PRIMARY KEY,
+        month VARCHAR(7) NOT NULL REFERENCES ${SCHEMA}.attendance_periods(month) ON DELETE CASCADE,
+        staff_id VARCHAR(32) NOT NULL REFERENCES ${SCHEMA}.staff(id) ON DELETE CASCADE,
+        work_date DATE NOT NULL,
+        value_code VARCHAR(8) NOT NULL CHECK (value_code IN ('1', '0.5', 'L', 'X', '2')),
+        work_units NUMERIC(5, 2) NOT NULL DEFAULT 0,
+        pay_multiplier NUMERIC(5, 2) NOT NULL DEFAULT 1,
+        status VARCHAR(32) NOT NULL DEFAULT 'posted',
+        note TEXT NOT NULL DEFAULT '',
+        logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (month, staff_id, work_date)
+      );
+      CREATE INDEX IF NOT EXISTS idx_attendance_entries_month_staff ON ${SCHEMA}.attendance_entries(month, staff_id);
+      CREATE INDEX IF NOT EXISTS idx_attendance_entries_date ON ${SCHEMA}.attendance_entries(work_date);
+      ALTER TABLE ${SCHEMA}.attendance_entries ADD COLUMN IF NOT EXISTS logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+      CREATE TABLE IF NOT EXISTS ${SCHEMA}.attendance_logs (
+        id BIGSERIAL PRIMARY KEY,
+        staff_id VARCHAR(32) NOT NULL REFERENCES ${SCHEMA}.staff(id) ON DELETE CASCADE,
+        work_date DATE NOT NULL,
+        value_code VARCHAR(8),
+        action VARCHAR(16) NOT NULL DEFAULT 'save' CHECK (action IN ('save', 'delete')),
+        logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_attendance_logs_staff_date ON ${SCHEMA}.attendance_logs(staff_id, work_date);
+      CREATE INDEX IF NOT EXISTS idx_attendance_logs_time ON ${SCHEMA}.attendance_logs(logged_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ${SCHEMA}.staff_benefits (
+        id BIGSERIAL PRIMARY KEY,
+        month VARCHAR(7) NOT NULL REFERENCES ${SCHEMA}.attendance_periods(month) ON DELETE CASCADE,
+        staff_id VARCHAR(32) NOT NULL REFERENCES ${SCHEMA}.staff(id) ON DELETE CASCADE,
+        holiday_sunday NUMERIC(8, 2) NOT NULL DEFAULT 0,
+        ot NUMERIC(8, 2) NOT NULL DEFAULT 0,
+        kpi NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        bhxh NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        tax NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        "time" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (month, staff_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_staff_benefits_month ON ${SCHEMA}.staff_benefits(month);
+
+      CREATE TABLE IF NOT EXISTS ${SCHEMA}.payroll_records (
+        id BIGSERIAL PRIMARY KEY,
+        month VARCHAR(7) NOT NULL REFERENCES ${SCHEMA}.attendance_periods(month) ON DELETE CASCADE,
+        staff_id VARCHAR(32) NOT NULL REFERENCES ${SCHEMA}.staff(id) ON DELETE CASCADE,
+        base_salary NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        allowance NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        kpi NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        insurance_salary NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        dependents INTEGER NOT NULL DEFAULT 0,
+        advance NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        work_days NUMERIC(6, 2) NOT NULL DEFAULT 0,
+        holiday_work_days NUMERIC(6, 2) NOT NULL DEFAULT 0,
+        sunday_work_days NUMERIC(6, 2) NOT NULL DEFAULT 0,
+        salary_by_days NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        extra_salary NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        gross_salary NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        insurance_employee NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        pit_tax NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        net_salary NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        status VARCHAR(16) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'confirmed', 'paid')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (month, staff_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_payroll_records_month ON ${SCHEMA}.payroll_records(month);
+    `);
+
+    const metadataRes = await client.query(`SELECT key, value FROM ${SCHEMA}.app_metadata WHERE key IN ('att', 'attMonth', 'holidays', 'payroll');`);
+    const migrationMeta = Object.fromEntries(metadataRes.rows.map((row) => [row.key, row.value]));
+    const currentAttendanceMonth = migrationMeta.attMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const holidayDates = Array.isArray(migrationMeta.holidays) ? migrationMeta.holidays : [];
+    const legacyAttendance = migrationMeta.att && typeof migrationMeta.att === 'object' ? migrationMeta.att : {};
+    const staffRes = await client.query(`SELECT id, name FROM ${SCHEMA}.staff;`);
+    const staffByKey = Object.fromEntries(staffRes.rows.flatMap((staff) => [[staff.id, staff.id], [staff.name, staff.id]]));
+    const legacyAttendanceRows = await client.query(`SELECT staff_id, to_char(date, 'YYYY-MM-DD') AS date, val FROM ${SCHEMA}.attendance;`);
+    const months = new Set([currentAttendanceMonth, ...legacyAttendanceRows.rows.map((row) => row.date.slice(0, 7))]);
+    for (const records of Object.values(legacyAttendance)) {
+      const days = records && records.days ? records.days : records;
+      for (const dateIso of Object.keys(days || {})) months.add(dateIso.slice(0, 7));
+    }
+    for (const month of months) {
+      const [year, monthNumber] = month.split('-').map(Number);
+      const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+      const standardDays = Array.from({ length: daysInMonth }, (_, index) => new Date(Date.UTC(year, monthNumber - 1, index + 1)).getUTCDay())
+        .reduce((total, weekday) => total + (weekday === 0 ? 0 : weekday === 6 ? 0.5 : 1), 0);
+      await client.query(`
+        INSERT INTO ${SCHEMA}.attendance_periods (month, standard_days)
+        VALUES ($1, $2)
+        ON CONFLICT (month) DO UPDATE SET standard_days = EXCLUDED.standard_days, updated_at = NOW();
+      `, [month, standardDays]);
+      if (month === currentAttendanceMonth) {
+        for (const holidayDate of holidayDates) {
+          await client.query(`
+            INSERT INTO ${SCHEMA}.attendance_holidays (month, holiday_date)
+            VALUES ($1, $2)
+            ON CONFLICT (month, holiday_date) DO NOTHING;
+          `, [month, holidayDate]);
+        }
+      }
+    }
+    for (const row of legacyAttendanceRows.rows) {
+      const valueCode = String(row.val);
+      if (!staffByKey[row.staff_id] || !['1', '0.5', 'L', 'X', '2'].includes(valueCode)) continue;
+      const workUnits = valueCode === '0.5' ? 0.5 : valueCode === 'X' || valueCode === '2' ? 0 : 1;
+      const payMultiplier = valueCode === 'X' ? 3 : valueCode === '2' ? 2 : 1;
+      await client.query(`
+        INSERT INTO ${SCHEMA}.attendance_entries (month, staff_id, work_date, value_code, work_units, pay_multiplier)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (month, staff_id, work_date) DO NOTHING;
+      `, [row.date.slice(0, 7), staffByKey[row.staff_id], row.date, valueCode, workUnits, payMultiplier]);
+    }
+    for (const [storedStaffKey, records] of Object.entries(legacyAttendance)) {
+      const staffId = staffByKey[storedStaffKey];
+      const days = records && records.days ? records.days : records;
+      if (!staffId || !days || typeof days !== 'object') continue;
+      for (const [dateIso, rawValue] of Object.entries(days)) {
+        const valueCode = String(rawValue);
+        if (!['1', '0.5', 'L', 'X', '2'].includes(valueCode)) continue;
+        const workUnits = valueCode === '0.5' ? 0.5 : valueCode === 'X' || valueCode === '2' ? 0 : 1;
+        const payMultiplier = valueCode === 'X' ? 3 : valueCode === '2' ? 2 : 1;
+        await client.query(`
+          INSERT INTO ${SCHEMA}.attendance_entries (month, staff_id, work_date, value_code, work_units, pay_multiplier)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (month, staff_id, work_date) DO NOTHING;
+        `, [dateIso.slice(0, 7), staffId, dateIso, valueCode, workUnits, payMultiplier]);
+      }
+    }
+    await client.query(`
+      INSERT INTO ${SCHEMA}.staff_benefits (month, staff_id, holiday_sunday)
+      SELECT
+        entry.month,
+        entry.staff_id,
+        COUNT(*)::numeric AS holiday_sunday
+      FROM ${SCHEMA}.attendance_entries entry
+      LEFT JOIN ${SCHEMA}.attendance_holidays holiday
+        ON holiday.month = entry.month AND holiday.holiday_date = entry.work_date
+      WHERE entry.value_code IN ('X', '2')
+        AND (holiday.id IS NOT NULL OR EXTRACT(DOW FROM entry.work_date) = 0)
+      GROUP BY entry.month, entry.staff_id
+      ON CONFLICT (month, staff_id) DO UPDATE SET
+        holiday_sunday = EXCLUDED.holiday_sunday,
+        "time" = NOW()
+      WHERE ${SCHEMA}.staff_benefits.holiday_sunday IS DISTINCT FROM EXCLUDED.holiday_sunday;
+    `);
+    const legacyPayroll = migrationMeta.payroll && typeof migrationMeta.payroll === 'object' ? migrationMeta.payroll : {};
+    for (const [storedStaffKey, values] of Object.entries(legacyPayroll)) {
+      const staffId = staffByKey[storedStaffKey];
+      if (!staffId || !values || typeof values !== 'object') continue;
+      const allowance = Object.values(values.allow || {}).reduce((total, amount) => total + (Number(amount) || 0), 0);
+      await client.query(`
+        INSERT INTO ${SCHEMA}.payroll_records
+          (month, staff_id, allowance, kpi, insurance_salary, dependents, advance)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (month, staff_id) DO NOTHING;
+      `, [
+        currentAttendanceMonth,
+        staffId,
+        allowance,
+        Number(values.kpi) || 0,
+        Number(values.insSalary) || 0,
+        Number(values.deps) || 0,
+        Number(values.advance) || 0
+      ]);
+    }
+    for (const staff of staffRes.rows) {
+      await client.query(`
+        INSERT INTO ${SCHEMA}.payroll_records (month, staff_id)
+        VALUES ($1, $2)
+        ON CONFLICT (month, staff_id) DO NOTHING;
+      `, [currentAttendanceMonth, staff.id]);
+      await client.query(`
+        INSERT INTO ${SCHEMA}.staff_benefits (month, staff_id)
+        VALUES ($1, $2)
+        ON CONFLICT (month, staff_id) DO NOTHING;
+      `, [currentAttendanceMonth, staff.id]);
+    }
+
     await client.query('COMMIT');
     console.log(`✅ Khởi tạo Schema ${SCHEMA} và các bảng thành công!`);
-
-    await seedIfEmpty(client);
     await recalculateMonthlyBalances(client);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -260,106 +507,5 @@ export async function initDb() {
     throw err;
   } finally {
     client.release();
-  }
-}
-
-async function seedIfEmpty(client) {
-  const countRes = await client.query(`SELECT COUNT(*)::int as cnt FROM ${SCHEMA}.staff;`);
-  if (countRes.rows[0].cnt > 0) {
-    console.log(`ℹ️ PostgreSQL đã có dữ liệu khởi tạo trong schema ${SCHEMA}.`);
-    return;
-  }
-
-  const seedPath = path.resolve(__dirname, '../../seedData.json');
-  if (!fs.existsSync(seedPath)) {
-    console.warn(`⚠️ Không tìm thấy tệp seedData.json để nạp.`);
-    return;
-  }
-
-  console.log(`🌱 Đang nạp Seed Data vào PostgreSQL schema ${SCHEMA}...`);
-  const seed = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
-
-  await client.query('BEGIN');
-  try {
-    if (seed.tx && seed.tx.length > 0) {
-      for (const t of seed.tx) {
-        await client.query(`
-          INSERT INTO ${SCHEMA}.transactions (id, date, acc, dir, amt, description, type, cat, contract, status, flags, doc, src)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-          ON CONFLICT (id) DO NOTHING;
-        `, [
-          t.id, t.date, t.acc, t.dir, t.amt, t.desc || '', t.type || '', t.cat || '',
-          t.contract || '', t.status || 'migrated', t.flags || [], t.doc || '', t.src || ''
-        ]);
-      }
-      console.log(`✅ Đã nạp ${seed.tx.length} giao dịch.`);
-    }
-
-    if (seed.contracts && seed.contracts.length > 0) {
-      for (const c of seed.contracts) {
-        await client.query(`
-          INSERT INTO ${SCHEMA}.contracts (id, kind, customer, no, tv, signed, fee, disc, disc_approved, due, terms, note)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-          ON CONFLICT (id) DO NOTHING;
-        `, [
-          c.id, c.kind, c.customer, c.no || '', c.tv || '', c.signed || null,
-          c.fee || 0, c.disc || 0, c.discApproved || false, c.due || null,
-          c.terms || '', c.note || ''
-        ]);
-      }
-      console.log(`✅ Đã nạp ${seed.contracts.length} hợp đồng.`);
-    }
-
-    if (seed.staff && seed.staff.length > 0) {
-      for (const s of seed.staff) {
-        await client.query(`
-          INSERT INTO ${SCHEMA}.staff (id, name, role, base_salary, allowance, status)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT (id) DO NOTHING;
-        `, [s.id, s.name, s.role || '', s.baseSalary || 0, s.allowance || 0, s.status || 'active']);
-      }
-      console.log(`✅ Đã nạp ${seed.staff.length} nhân sự.`);
-    }
-
-    const seedGifts = [
-      { id: 'Q01', name: 'Hộp bánh trung thu', unit: 'hộp', price: 271675 },
-      { id: 'Q02', name: 'Quà bốc thăm hội thảo', unit: 'phần', price: 666364 },
-      { id: 'Q03', name: 'Ấn phẩm, brochure', unit: 'cuốn', price: 14850 },
-      { id: 'Q04', name: 'Tờ rơi thẻ', unit: 'tờ', price: 3208 },
-      { id: 'Q05', name: 'Hashtag cầm tay', unit: 'cái', price: 76667 },
-      { id: 'Q06', name: 'Túi đựng quà', unit: 'cái', price: 5350 }
-    ];
-    for (const g of seedGifts) {
-      await client.query(`
-        INSERT INTO ${SCHEMA}.gift_items (id, name, unit, price)
-        VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING;
-      `, [g.id, g.name, g.unit, g.price]);
-    }
-
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    await client.query(`
-      INSERT INTO ${SCHEMA}.app_metadata (key, value) VALUES 
-        ('attMonth', $1::jsonb),
-        ('att', $2::jsonb),
-        ('holidays', $3::jsonb),
-        ('budget', $4::jsonb),
-        ('locks', $5::jsonb),
-        ('close', $6::jsonb)
-      ON CONFLICT (key) DO NOTHING;
-    `, [
-      JSON.stringify(currentMonth),
-      JSON.stringify({}),
-      JSON.stringify([]),
-      JSON.stringify({}),
-      JSON.stringify({}),
-      JSON.stringify({})
-    ]);
-
-    await client.query('COMMIT');
-    console.log(`🎉 Nạp Seed Data vào PostgreSQL thành công 100%!`);
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error(`❌ Lỗi khi nạp seed data:`, err);
   }
 }

@@ -29,13 +29,40 @@ const PORT = process.env.PORT || 3001;
 
 app.use(express.json({ limit: '10mb' }));
 
+let initPromise = null;
+export function ensureServerInitialized() {
+  if (!initPromise) {
+    initPromise = (async () => {
+      await initDb();
+      await ensureCurrentMonthInitialized();
+    })().catch((err) => {
+      initPromise = null;
+      throw err;
+    });
+  }
+  return initPromise;
+}
+
+app.use('/api', async (req, res, next) => {
+  try {
+    await ensureServerInitialized();
+    next();
+  } catch (err) {
+    console.error('❌ Lỗi khởi tạo PostgreSQL schema/seed:', err);
+    res.status(500).json({
+      status: 'error',
+      error: 'Không thể khởi tạo kết nối PostgreSQL: ' + (err?.message || 'Unknown error')
+    });
+  }
+});
+
 // System Health & Full State Endpoints
 app.get('/api/health', async (req, res) => {
   try {
     const dbOk = await checkDbHealth();
     res.json({
       status: dbOk ? 'ok' : 'error',
-      database: 'PostgreSQL 16 (Local)',
+      database: process.env.VERCEL ? 'Vercel Postgres (Cloud)' : 'PostgreSQL 16 (Local)',
       schema: process.env.DB_SCHEMA || 'finance_vpm',
       googleSheetSyncEnabled: Boolean(process.env.GOOGLE_SHEET_API_URL && process.env.GOOGLE_SHEET_API_URL.trim()),
       timestamp: new Date().toISOString()
@@ -79,11 +106,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Bootstrap Server
+// Bootstrap Server (Local / Long-running Node process)
 async function start() {
   try {
-    await initDb();
-    await ensureCurrentMonthInitialized();
+    await ensureServerInitialized();
     initCronJobs();
 
     app.listen(PORT, () => {
@@ -96,4 +122,8 @@ async function start() {
   }
 }
 
-start();
+if (!process.env.VERCEL) {
+  start();
+}
+
+export default app;

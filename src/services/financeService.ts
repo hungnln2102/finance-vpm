@@ -1,5 +1,5 @@
 import { Transaction, AppState, IssueItem, AccountKey } from '../types';
-import { APPROVE_LIMIT, DISC_LIMIT, OPEN_BAL, CATS } from '../data/constants';
+import { APPROVE_LIMIT, DISC_LIMIT, OPEN_BAL } from '../data/constants';
 import { mon, lastDay, prevMonth, fm, mil, dmy, monthLabel } from '../utils/formatters';
 import { calculateDebt } from './debtService';
 import { detectAttendanceAlerts } from './payrollService';
@@ -37,9 +37,6 @@ export function monthTx(transactions: Transaction[], m: string): Transaction[] {
 
 export function opexBy(transactions: Transaction[], m: string): Record<string, number> {
   const r: Record<string, number> = {};
-  for (const k in CATS) {
-    r[k] = 0;
-  }
   for (const t of monthTx(transactions, m)) {
     if (t.type === 'OPEX' && t.cat) {
       r[t.cat] = (r[t.cat] || 0) + t.amt;
@@ -102,7 +99,7 @@ export function detectAllIssues(state: AppState, today: string): IssueItem[] {
     .filter(([, r]) => r.min < 0);
 
   for (const [m, r] of neg) {
-    list.push({ lvl: 'bad', text: `Sổ quỹ âm ${fm(r.min)} đ trong ${monthLabel(m).toLowerCase()} (cuối ngày ${dmy(r.minD || m + '-01')})`, go: 'report' });
+    list.push({ lvl: 'bad', text: `Sổ quỹ âm ${fm(r.min)} đ trong ${monthLabel(m).toLowerCase()} (cuối ngày ${dmy(r.minD || m + '-01')})`, go: 'overview' });
   }
 
   const ov = state.contracts
@@ -125,7 +122,7 @@ export function detectAllIssues(state: AppState, today: string): IssueItem[] {
 
   const attA = detectAttendanceAlerts(state.staff, state.att, state.attMonth, state.holidays).length;
   if (attA) {
-    list.push({ lvl: 'warn', text: `${attA} ô chấm công T9 cần xác nhận (ngày lễ, chủ nhật)`, go: 'payroll' });
+    list.push({ lvl: 'warn', text: `${attA} ô chấm công ${monthLabel(state.attMonth)} cần xác nhận (ngày lễ, chủ nhật)`, go: 'payroll' });
   }
 
   return list;

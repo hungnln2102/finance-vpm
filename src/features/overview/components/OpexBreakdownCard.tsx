@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useApp } from './../../../context/useApp';
-import { CATS } from '../../../data/constants';
 import { fm, mil, monthLabel } from '../../../utils/formatters';
 import { opexBy } from '../../../services/financeService';
 import { PieChart, Table, Layers } from 'lucide-react';
@@ -21,11 +20,12 @@ export const OpexBreakdownCard: React.FC = () => {
   const monthsTrend = ['2026-08', '2026-09', '2026-10'];
   const trendData = monthsTrend.map((m) => opexBy(state.tx, m));
 
+  const categoryNames = state.costCategories;
   const currentOpex = opexBy(state.tx, ui.month);
   const totalCurrentOpex = Object.values(currentOpex).reduce((a, b) => a + b, 0);
 
   // Sắp xếp các danh mục theo chi phí giảm dần
-  const sortedCats = Object.entries(CATS).sort((a, b) => (currentOpex[b[0]] || 0) - (currentOpex[a[0]] || 0));
+  const sortedCats = Object.entries(categoryNames).sort((a, b) => (currentOpex[b[0]] || 0) - (currentOpex[a[0]] || 0));
 
   return (
     <section className="card-box opex-breakdown-card">
@@ -82,7 +82,7 @@ export const OpexBreakdownCard: React.FC = () => {
                       width: `${pct}%`,
                       backgroundColor: CAT_COLORS[k] || '#94a3b8'
                     }}
-                    title={`${CATS[k]}: ${mil(amt)} (${pct.toFixed(1)}%)`}
+                    title={`${categoryNames[k] || k}: ${mil(amt)} (${pct.toFixed(1)}%)`}
                   />
                 );
               })}
@@ -135,7 +135,7 @@ export const OpexBreakdownCard: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {Object.entries(CATS).map(([k, label]) => (
+              {Object.entries(categoryNames).map(([k, label]) => (
                 <tr key={k}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
