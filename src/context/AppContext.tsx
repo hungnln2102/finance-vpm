@@ -100,6 +100,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             contracts: state.contracts,
             gifts: state.gifts,
             budget: state.budget,
+            costCategories: state.costCategories,
             costAdjustments: state.costAdjustments,
             webhooks: state.webhooks,
             proposals: state.proposals,

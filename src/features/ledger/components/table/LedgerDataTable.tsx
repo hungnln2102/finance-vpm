@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Transaction, TransactionReceipt, Proposal } from '../../../../types';
+import React, { useState, useMemo } from 'react';
+import { Transaction, TransactionReceipt, Proposal, Contract } from '../../../../types';
 import { TYPES, CATS } from '../../../../data/constants';
 import { fmt, dmy } from '../../../../utils/formatters';
 import { txIssues } from '../../../../services/financeService';
+import { CustomSelect, CustomSelectOption } from '../../../../shared/components/common/CustomSelect';
 import { 
   AlertCircle, 
   FileText, 
@@ -22,6 +23,7 @@ interface LedgerDataTableProps {
   canEdit: boolean;
   locked: boolean;
   proposals?: Proposal[];
+  contracts?: Contract[];
   isUnlistedTab?: boolean;
   onEditTx: (id: string) => void;
   onUpdateTx?: (id: string, updates: Partial<Transaction>) => void;
@@ -33,6 +35,7 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
   canEdit,
   locked,
   proposals = [],
+  contracts = [],
   isUnlistedTab = false,
   onEditTx,
   onUpdateTx
@@ -40,12 +43,74 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
   // State lưu id của dòng đang mở dropdown xem biên lai
   const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
 
-  // State lưu id của dòng đang mở panel chọn phân loại nhanh (Match Kế hoạch hoặc Chi phí khác)
+  // State lưu id của dòng đang mở panel chọn phân loại nhanh (Match Kế hoạch, Chi phí hoặc Công nợ)
   const [matchingTxId, setMatchingTxId] = useState<string | null>(null);
-  const [matchMode, setMatchMode] = useState<'proposal' | 'opex' | 'contract'>('proposal');
+  const [matchCategory, setMatchCategory] = useState<'proposal' | 'opex' | 'debt' | 'other_income'>('debt');
   const [selectedProposalId, setSelectedProposalId] = useState<string>('');
   const [selectedCat, setSelectedCat] = useState<string>('');
   const [contractInput, setContractInput] = useState<string>('');
+  const [incomeDescription, setIncomeDescription] = useState<string>('');
+
+  // Dropdown 1 cho dòng TIỀN VÀO (Thu tiền: Tuyệt đối không cho phép gán Kế hoạch chi tiêu)
+  const inCategoryOptions: CustomSelectOption[] = useMemo(() => [
+    { value: 'debt', label: '📑 Thu công nợ Hợp đồng', badge: 'Thu nợ', badgeColor: 'teal' },
+    { value: 'other_income', label: '📁 Khoản thu khác / Hoàn tiền', badge: 'Thu khác', badgeColor: 'muted' }
+  ], []);
+
+  // Dropdown 1 cho dòng TIỀN RA (Chi tiêu ngân sách / Thanh toán)
+  const outCategoryOptions: CustomSelectOption[] = useMemo(() => [
+    { value: 'proposal', label: '🎯 Chi giải ngân Kế hoạch đã duyệt', badge: 'Kế hoạch', badgeColor: 'blue' },
+    { value: 'opex', label: '📁 Chi phí vận hành (OPEX)', badge: 'Khoản chi', badgeColor: 'ochre' },
+    { value: 'debt', label: '📑 Chi tạm ứng / Trả nợ HĐ', badge: 'Công nợ', badgeColor: 'teal' }
+  ], []);
+
+  // Danh mục phân loại các khoản thu khác (Tiền vào)
+  const otherIncomeOptions: CustomSelectOption[] = useMemo(() => [
+    { value: 'LÃI_NH', label: 'Thu tiền lãi tiền gửi tiết kiệm / tài khoản ngân hàng', badge: 'Lãi NH', badgeColor: 'teal' },
+    { value: 'HOÀN_TIỀN', label: 'Đối tác / Nhà cung cấp hoàn trả tiền hoặc đền bù', badge: 'Hoàn tiền', badgeColor: 'blue' },
+    { value: 'DFAM_CAP_VON', label: 'DFAM rót vốn kinh doanh / Hỗ trợ ngân sách', badge: 'Cấp vốn', badgeColor: 'ochre' },
+    { value: 'THU_HOAT_DONG_KHAC', label: 'Các nguồn thu hoạt động doanh nghiệp khác', badge: 'Thu khác', badgeColor: 'muted' }
+  ], []);
+
+  // Chỉ lọc các kế hoạch đã được phê duyệt (status === 'approved') để chi giải ngân
+  const approvedProposals = useMemo(() => {
+    return proposals.filter((p) => p.status === 'approved');
+  }, [proposals]);
+
+  const proposalOptions: CustomSelectOption[] = useMemo(() => {
+    return approvedProposals.map((p) => {
+      const spent = (p as any).spent ?? 0;
+      const remain = Math.max(0, p.amount - spent);
+      return {
+        value: p.id,
+        label: p.title,
+        badge: p.code || p.id,
+        badgeColor: 'blue',
+        subLabel: `Đã chi: ${fmt(spent)} đ · Còn lại: ${fmt(remain)} đ`,
+        meta: `Dự toán: ${fmt(p.amount)} đ`
+      };
+    });
+  }, [approvedProposals]);
+
+  const opexOptions: CustomSelectOption[] = useMemo(() => {
+    return Object.entries(CATS).map(([k, label]) => ({
+      value: k,
+      label: label,
+      badge: k,
+      badgeColor: 'ochre'
+    }));
+  }, []);
+
+  const debtOptions: CustomSelectOption[] = useMemo(() => {
+    return contracts.map((c) => ({
+      value: c.id,
+      label: c.customer,
+      badge: c.id,
+      badgeColor: c.kind === 'KH' ? 'teal' : 'ochre',
+      subLabel: c.kind === 'KH' ? 'Hợp đồng Khách hàng' : 'Tư vấn viên / Hoa hồng',
+      meta: `Phí: ${fmt(c.fee)} đ`
+    }));
+  }, [contracts]);
 
   const toggleExpand = (id: string) => {
     setExpandedTxId((prev) => (prev === id ? null : id));
@@ -56,32 +121,65 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
 
     const nextFlags = (t.flags || []).filter((f) => f !== 'unlisted');
 
-    if (t.dir === 'out') {
-      if (matchMode === 'proposal') {
-        const p = proposals.find((item) => item.id === selectedProposalId);
+    if (t.dir === 'in') {
+      // 1. TIỀN VÀO: Bắt buộc proposalId = '' (Không bao giờ gán vào kế hoạch chi tiêu)
+      if (matchCategory === 'debt') {
+        const cId = contractInput.trim();
+        onUpdateTx(t.id, {
+          proposalId: '',
+          cat: '',
+          contract: cId,
+          type: cId ? 'THU_KH' : 'THU_KHAC',
+          status: 'posted',
+          flags: nextFlags
+        });
+      } else {
+        // other_income
+        onUpdateTx(t.id, {
+          proposalId: '',
+          cat: selectedCat || 'THU_HOAT_DONG_KHAC',
+          contract: '',
+          type: 'THU_KHAC',
+          status: 'posted',
+          flags: nextFlags,
+          desc: incomeDescription.trim()
+        });
+      }
+    } else {
+      // 2. TIỀN RA: Chi giải ngân kế hoạch đã duyệt, chi OPEX hoặc trả nợ
+      if (matchCategory === 'proposal') {
+        const p = approvedProposals.find((item) => item.id === selectedProposalId);
+        if (!p) return;
         onUpdateTx(t.id, {
           proposalId: selectedProposalId,
           cat: selectedCat || t.cat || '',
+          contract: '',
           type: 'OPEX',
           status: 'posted',
           flags: nextFlags,
           desc: t.desc || (p ? `Chi giải ngân kế hoạch ${p.code || p.id}` : t.desc)
         });
-      } else {
+      } else if (matchCategory === 'opex') {
         onUpdateTx(t.id, {
+          proposalId: '',
           cat: selectedCat,
+          contract: '',
           type: 'OPEX',
           status: 'posted',
           flags: nextFlags
         });
+      } else {
+        // Công nợ / Tạm ứng Hợp đồng
+        const cId = contractInput.trim();
+        onUpdateTx(t.id, {
+          proposalId: '',
+          cat: '',
+          contract: cId,
+          type: cId.startsWith('TV') ? 'TAM_UNG' : 'OPEX',
+          status: 'posted',
+          flags: nextFlags
+        });
       }
-    } else {
-      onUpdateTx(t.id, {
-        contract: contractInput.trim(),
-        type: contractInput.trim() ? 'THU_KH' : 'THU_KHAC',
-        status: 'posted',
-        flags: nextFlags
-      });
     }
 
     setMatchingTxId(null);
@@ -181,12 +279,15 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
                   <td>
                     <div style={{ fontWeight: 500, color: 'var(--ink)' }}>{t.desc}</div>
                     
-                    {issues.map((iss, idx) => (
-                      <div key={idx} style={{ color: 'var(--bad)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>
+                    {issues.length > 0 && (
+                      <span
+                        title={issues.join(' · ')}
+                        style={{ color: 'var(--bad)', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '3px' }}
+                      >
                         <AlertCircle size={11} />
-                        <span>{iss}</span>
-                      </div>
-                    ))}
+                        <span>{issues.length} cảnh báo</span>
+                      </span>
+                    )}
 
                     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '4px' }}>
                       {/* Thẻ Biên lai có nút toggle */}
@@ -220,49 +321,6 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
                         </button>
                       )}
 
-                      {/* Huy hiệu Kế hoạch nếu đã khớp */}
-                      {matchedProposal && (
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            color: '#2563eb',
-                            backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                            border: '1px solid rgba(59, 130, 246, 0.2)',
-                            borderRadius: '4px',
-                            padding: '2px 6px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            fontWeight: 600
-                          }}
-                          title={`Thuộc kế hoạch: ${matchedProposal.title}`}
-                        >
-                          <Target size={11} />
-                          <span>Kế hoạch: {matchedProposal.code}</span>
-                        </span>
-                      )}
-
-                      {/* Huy hiệu Chưa liệt kê nếu có */}
-                      {isUnlisted && (
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            color: '#ea580c',
-                            backgroundColor: 'rgba(234, 88, 12, 0.12)',
-                            border: '1px solid rgba(234, 88, 12, 0.3)',
-                            borderRadius: '4px',
-                            padding: '2px 6px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                            fontWeight: 600
-                          }}
-                          title="Giao dịch chưa làm rõ nguồn tiền (chưa khớp Kế hoạch hoặc Chi phí khác)"
-                        >
-                          <AlertCircle size={11} />
-                          <span>Chưa liệt kê</span>
-                        </span>
-                      )}
                     </div>
                   </td>
 
@@ -277,6 +335,11 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
                     {t.contract && (
                       <div style={{ fontSize: '11px', color: 'var(--teal)' }}>
                         HĐ: {t.contract}
+                      </div>
+                    )}
+                    {matchedProposal && (
+                      <div style={{ fontSize: '11px', color: '#2563eb' }} title={matchedProposal.title}>
+                        KH: {matchedProposal.code || matchedProposal.id}
                       </div>
                     )}
                   </td>
@@ -304,10 +367,29 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
                               setMatchingTxId(null);
                             } else {
                               setMatchingTxId(t.id);
-                              setMatchMode('proposal');
-                              setSelectedProposalId(t.proposalId || (proposals[0]?.id || ''));
-                              setSelectedCat(t.cat || 'VP');
-                              setContractInput(t.contract || '');
+                              if (t.dir === 'in') {
+                                setMatchCategory('debt');
+                                setSelectedProposalId('');
+                                setSelectedCat('');
+                                setContractInput(t.contract || (contracts[0]?.id || ''));
+                                setIncomeDescription(t.desc || '');
+                              } else {
+                                const hasApproved = approvedProposals.length > 0;
+                                const defaultCat: 'proposal' | 'opex' | 'debt' = t.proposalId 
+                                  ? 'proposal' 
+                                  : (t.cat ? 'opex' : (hasApproved ? 'proposal' : 'opex'));
+                                setMatchCategory(defaultCat);
+                                const matchedApprovedProp = approvedProposals.find((p) => p.id === t.proposalId) || approvedProposals[0];
+                                const initialPropId = matchedApprovedProp?.id || '';
+                                setSelectedProposalId(initialPropId);
+                                setSelectedCat(t.cat || 'VP');
+                                setContractInput(
+                                  t.contract || 
+                                  (defaultCat === 'proposal' ? (matchedApprovedProp?.code || matchedApprovedProp?.id || '') : 
+                                   defaultCat === 'opex' ? (t.cat || 'VP') : 
+                                   (contracts[0]?.id || ''))
+                                );
+                              }
                             }
                           }}
                           style={{
@@ -320,7 +402,7 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
                             gap: '4px',
                             padding: '3px 8px'
                           }}
-                          title="Bấm để chọn Kế hoạch hoặc Chi phí khác cho giao dịch này"
+                          title="Bấm để chọn Kế hoạch, Chi phí hoặc Công nợ cho giao dịch này"
                         >
                           <Zap size={12} />
                           <span>Khớp nguồn</span>
@@ -448,180 +530,321 @@ export const LedgerDataTable: React.FC<LedgerDataTableProps> = ({
                 )}
 
                 {/* Dòng Mở Rộng: Bộ Phân Loại Khớp Kế Hoạch Hoặc Chi Phí Khác (OPEX) */}
-                {matchingTxId === t.id && (
-                  <tr style={{ backgroundColor: 'rgba(234, 88, 12, 0.03)', borderBottom: '1px solid var(--line)' }}>
-                    <td colSpan={7} style={{ padding: '0 0 16px 0' }}>
-                      <div
-                        style={{
-                          margin: '8px 14px 4px 20px',
-                          padding: '16px 20px',
-                          backgroundColor: 'var(--panel-2)',
-                          borderRadius: '8px',
-                          borderLeft: '4px solid #ea580c',
-                          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Zap size={16} style={{ color: '#ea580c' }} />
-                            <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--ink)' }}>
-                              Phân Loại Nguồn Tiền Cho Giao Dịch [{t.id}] · {fmt(paidAmt)} đ ({t.dir === 'out' ? 'Tiền ra' : 'Tiền vào'})
-                            </span>
-                            <span style={{ fontSize: '11px', color: '#ea580c', backgroundColor: 'rgba(234, 88, 12, 0.1)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                              Tiền đã trừ vào tài sản {t.acc}
-                            </span>
+                {matchingTxId === t.id && (() => {
+                  const isIncome = t.dir === 'in';
+                  const themeColor = isIncome ? 'var(--good)' : '#ea580c';
+                  const themeBg = isIncome ? 'rgba(16, 185, 129, 0.04)' : 'rgba(234, 88, 12, 0.03)';
+                  const themeBadgeBg = isIncome ? 'rgba(16, 185, 129, 0.12)' : 'rgba(234, 88, 12, 0.1)';
+
+                  return (
+                    <tr style={{ backgroundColor: themeBg, borderBottom: '1px solid var(--line)' }}>
+                      <td colSpan={7} style={{ padding: '0 0 16px 0' }}>
+                        <div
+                          style={{
+                            margin: '8px 14px 4px 20px',
+                            padding: '16px 20px',
+                            backgroundColor: 'var(--panel-2)',
+                            borderRadius: '8px',
+                            borderLeft: `4px solid ${themeColor}`,
+                            boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Zap size={16} style={{ color: themeColor }} />
+                              <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--ink)' }}>
+                                {isIncome ? 'Phân Loại Nguồn Thu Tiền Về' : 'Phân Loại Nguồn Tiền Chi Ra'} Cho Giao Dịch [{t.id}] · {isIncome ? '+' : '-'}{fmt(paidAmt)} đ ({isIncome ? 'Tiền vào' : 'Tiền ra'})
+                              </span>
+                              <span style={{ fontSize: '11px', color: themeColor, backgroundColor: themeBadgeBg, padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                                {isIncome ? `Tiền đã cộng vào tài sản ${t.acc}` : `Tiền đã trừ vào tài sản ${t.acc}`}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-ghost xs"
+                              onClick={() => setMatchingTxId(null)}
+                              style={{ fontSize: '11px', color: 'var(--muted)' }}
+                            >
+                              Đóng
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            className="btn btn-ghost xs"
-                            onClick={() => setMatchingTxId(null)}
-                            style={{ fontSize: '11px', color: 'var(--muted)' }}
-                          >
-                            Đóng
-                          </button>
-                        </div>
 
-                        {/* Nội dung chọn Match */}
-                        {t.dir === 'out' ? (
+                          {/* Nội dung chọn Match: 2 dropdown liên hoàn CustomSelect + 1 input mã */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            {/* Lựa chọn Radio */}
-                            <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: matchMode === 'proposal' ? 600 : 400, color: matchMode === 'proposal' ? '#2563eb' : 'var(--ink)' }}>
-                                <input
-                                  type="radio"
-                                  name={`match-mode-${t.id}`}
-                                  checked={matchMode === 'proposal'}
-                                  onChange={() => setMatchMode('proposal')}
-                                />
-                                <span>🎯 Khớp với Kế hoạch đã duyệt</span>
-                              </label>
+                            <label style={{ fontSize: '12.5px', color: 'var(--muted)', fontWeight: 600 }}>
+                              {isIncome 
+                                ? 'Phân loại nguồn tiền THU VÀO (Công nợ Hợp đồng / Khoản thu khác):' 
+                                : 'Phân loại nguồn tiền CHI RA (Kế hoạch đã duyệt / Chi phí OPEX / Công nợ):'}
+                            </label>
 
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: matchMode === 'opex' ? 600 : 400, color: matchMode === 'opex' ? '#ea580c' : 'var(--ink)' }}>
-                                <input
-                                  type="radio"
-                                  name={`match-mode-${t.id}`}
-                                  checked={matchMode === 'opex'}
-                                  onChange={() => setMatchMode('opex')}
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                              {/* Dropdown 1: Loại nguồn tiền */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '190px' }}>
+                                <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
+                                  1. Phân loại nguồn
+                                </span>
+                                <CustomSelect
+                                  value={matchCategory}
+                                  options={isIncome ? inCategoryOptions : outCategoryOptions}
+                                  onChange={(val) => {
+                                    const nextCat = val as 'proposal' | 'opex' | 'debt' | 'other_income';
+                                    setMatchCategory(nextCat);
+                                    if (nextCat === 'proposal') {
+                                      const firstP = approvedProposals[0];
+                                      setSelectedProposalId(firstP?.id || '');
+                                      setContractInput(firstP?.code || firstP?.id || '');
+                                    } else if (nextCat === 'opex') {
+                                      const firstCat = Object.keys(CATS)[0] || 'VP';
+                                      setSelectedCat(firstCat);
+                                      setContractInput(firstCat);
+                                    } else if (nextCat === 'other_income') {
+                                      const firstIncome = otherIncomeOptions[0]?.value || 'THU_HOAT_DONG_KHAC';
+                                      setSelectedCat(firstIncome);
+                                      setContractInput('');
+                                      setIncomeDescription('');
+                                      setSelectedProposalId('');
+                                    } else {
+                                      const firstC = contracts[0];
+                                      setContractInput(firstC?.id || '');
+                                      setSelectedProposalId('');
+                                    }
+                                  }}
+                                  showSearch={false}
+                                  minWidth="190px"
+                                  width="190px"
                                 />
-                                <span>📁 Chi phí khác (OPEX Doanh Nghiệp)</span>
-                              </label>
+                              </div>
+
+                              {/* Dropdown 2: Dựa vào Dropdown 1 để list ra */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 380px', minWidth: '280px' }}>
+                                <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
+                                  2. Danh mục chi tiết ({
+                                    matchCategory === 'proposal' ? 'Kế hoạch đã duyệt' : 
+                                    matchCategory === 'opex' ? 'Khoản mục chi phí' : 
+                                    matchCategory === 'other_income' ? 'Khoản thu khác' : 
+                                    'Hợp đồng / Khách hàng'
+                                  })
+                                </span>
+
+                                {matchCategory === 'proposal' && (
+                                  <CustomSelect
+                                    value={selectedProposalId}
+                                    options={proposalOptions}
+                                    placeholder={approvedProposals.length > 0 ? '-- Chọn kế hoạch đã được phê duyệt --' : '-- Không có kế hoạch nào được phê duyệt --'}
+                                    searchPlaceholder="Gõ mã hoặc tên kế hoạch đã duyệt để tìm..."
+                                    onChange={(val) => {
+                                      setSelectedProposalId(val);
+                                      const p = approvedProposals.find((item) => item.id === val);
+                                      if (p) setContractInput(p.code || p.id);
+                                    }}
+                                    minWidth="280px"
+                                    width="100%"
+                                    disabled={approvedProposals.length === 0}
+                                  />
+                                )}
+
+                                {matchCategory === 'opex' && (
+                                  <CustomSelect
+                                    value={selectedCat}
+                                    options={opexOptions}
+                                    placeholder="-- Chọn danh mục chi phí (OPEX) --"
+                                    searchPlaceholder="Gõ tên danh mục chi phí để tìm..."
+                                    onChange={(val) => {
+                                      setSelectedCat(val);
+                                    }}
+                                    minWidth="280px"
+                                    width="100%"
+                                  />
+                                )}
+
+                                {matchCategory === 'debt' && (
+                                  <CustomSelect
+                                    value={contractInput}
+                                    options={debtOptions}
+                                    placeholder="-- Chọn hợp đồng khách hàng / tư vấn viên --"
+                                    searchPlaceholder="Gõ mã HĐ hoặc tên khách hàng để tìm..."
+                                    onChange={(val) => setContractInput(val)}
+                                    minWidth="280px"
+                                    width="100%"
+                                  />
+                                )}
+
+                                {matchCategory === 'other_income' && (
+                                  <CustomSelect
+                                    value={selectedCat}
+                                    options={otherIncomeOptions}
+                                    placeholder="-- Chọn khoản thu khác / hoàn tiền --"
+                                    searchPlaceholder="Gõ tên khoản thu để tìm..."
+                                    onChange={(val) => {
+                                      setSelectedCat(val);
+                                    }}
+                                    minWidth="280px"
+                                    width="100%"
+                                  />
+                                )}
+                              </div>
+
+                              {/* Custom link code or income description */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: matchCategory === 'other_income' ? '280px' : '160px', flex: matchCategory === 'other_income' ? '1 1 320px' : '0 0 170px' }}>
+                                <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
+                                  {matchCategory === 'other_income' ? '3. Di\u1ec5n gi\u1ea3i ngu\u1ed3n thu *' : '3. M\u00e3 g\u00e1n / T\u00f9y bi\u1ebfn'}
+                                </span>
+                                <input
+                                  type="text"
+                                  placeholder={
+                                    matchCategory === 'debt'
+                                      ? (isIncome ? 'VD: KH012, TV03...' : 'Mã HĐ tạm ứng...')
+                                      : matchCategory === 'proposal' ? 'Mã kế hoạch...'
+                                      : matchCategory === 'other_income' ? 'VD: Kh\u00e1ch h\u00e0ng ho\u00e0n l\u1ea1i ti\u1ec1n c\u1ecdc h\u1ed9i th\u1ea3o...'
+                                      : 'Mã khoản chi...'
+                                  }
+                                  value={matchCategory === 'other_income' ? incomeDescription : contractInput}
+                                  onChange={(e) => {
+                                    if (matchCategory === 'other_income') {
+                                      setIncomeDescription(e.target.value);
+                                    } else {
+                                      setContractInput(e.target.value);
+                                    }
+                                  }}
+                                  style={{
+                                    padding: '8px 12px',
+                                    fontSize: '13px',
+                                    borderRadius: 'var(--radius-sm)',
+                                    border: '1px solid var(--line)',
+                                    backgroundColor: 'var(--panel)',
+                                    color: 'var(--ink)',
+                                    width: '100%',
+                                    boxSizing: 'border-box'
+                                  }}
+                                />
+                              </div>
                             </div>
 
-                            {/* Khung Chi Tiết Tuỳ Chế Độ */}
-                            {matchMode === 'proposal' ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 500 }}>
-                                  Chọn Kế hoạch đã được phê duyệt để làm rõ khoản chi giải ngân này:
-                                </label>
-                                <select
-                                  value={selectedProposalId}
-                                  onChange={(e) => setSelectedProposalId(e.target.value)}
+                            {/* Card Preview trực quan sau khi chọn */}
+                            {matchCategory === 'proposal' && selectedProposalId && (() => {
+                              const p = approvedProposals.find((item) => item.id === selectedProposalId);
+                              if (!p) return null;
+                              const spent = (p as any).spent ?? 0;
+                              const remain = Math.max(0, p.amount - spent);
+                              return (
+                                <div
                                   style={{
                                     padding: '8px 12px',
-                                    fontSize: '13px',
                                     borderRadius: '6px',
-                                    border: '1px solid var(--border)',
-                                    backgroundColor: 'var(--bg)',
-                                    color: 'var(--ink)',
-                                    maxWidth: '650px'
+                                    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                                    border: '1px solid rgba(59, 130, 246, 0.25)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    flexWrap: 'wrap',
+                                    gap: '8px',
+                                    fontSize: '12px'
                                   }}
                                 >
-                                  <option value="">-- Chọn kế hoạch giải ngân --</option>
-                                  {proposals.map((p) => {
-                                    const spent = (p as any).spent ?? 0;
-                                    const remain = Math.max(0, p.amount - spent);
-                                    return (
-                                      <option key={p.id} value={p.id}>
-                                        [{p.code || p.id}] {p.title} · (Dự toán: {fmt(p.amount)} đ · Còn lại: {fmt(remain)} đ)
-                                      </option>
-                                    );
-                                  })}
-                                </select>
-                                {selectedProposalId && (() => {
-                                  const p = proposals.find((item) => item.id === selectedProposalId);
-                                  if (!p) return null;
-                                  return (
-                                    <div style={{ fontSize: '11.5px', color: '#2563eb', marginTop: '2px' }}>
-                                      ℹ️ Sau khi khớp, đợt chi {fmt(paidAmt)} đ sẽ tự động được ghi nhận vào kế hoạch <b>{p.title}</b>. Số dư tài sản giữ nguyên vì đã trừ lúc nhận biên lai.
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 500 }}>
-                                  Chọn danh mục Chi phí khác (OPEX):
-                                </label>
-                                <select
-                                  value={selectedCat}
-                                  onChange={(e) => setSelectedCat(e.target.value)}
-                                  style={{
-                                    padding: '8px 12px',
-                                    fontSize: '13px',
-                                    borderRadius: '6px',
-                                    border: '1px solid var(--border)',
-                                    backgroundColor: 'var(--bg)',
-                                    color: 'var(--ink)',
-                                    maxWidth: '450px'
-                                  }}
-                                >
-                                  <option value="">-- Chọn danh mục chi phí --</option>
-                                  {Object.entries(CATS).map(([k, label]) => (
-                                    <option key={k} value={k}>
-                                      {label} ({k})
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <label style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 500 }}>
-                              Gán vào mã Hợp đồng khách hàng (nếu là tiền thu hợp đồng, để trống nếu là Thu khác):
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="VD: KH012, TV03..."
-                              value={contractInput}
-                              onChange={(e) => setContractInput(e.target.value)}
-                              style={{
-                                padding: '8px 12px',
-                                fontSize: '13px',
-                                borderRadius: '6px',
-                                border: '1px solid var(--border)',
-                                backgroundColor: 'var(--bg)',
-                                color: 'var(--ink)',
-                                maxWidth: '300px'
-                              }}
-                            />
-                          </div>
-                        )}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#2563eb' }}>
+                                    <Target size={14} />
+                                    <span>Ghi nhận chi giải ngân vào: <b>[{p.code || p.id}] {p.title}</b></span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '12px', color: 'var(--ink)', fontFamily: 'var(--f-num)', fontSize: '11.5px' }}>
+                                    <span>Dự toán: <b>{fmt(p.amount)} đ</b></span>
+                                    <span>Đã chi: <b>{fmt(spent)} đ</b></span>
+                                    <span style={{ color: remain > 0 ? 'var(--good)' : 'var(--bad)' }}>Còn lại: <b>{fmt(remain)} đ</b></span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
 
-                        {/* Nút hành động */}
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px', borderTop: '1px solid var(--line)', paddingTop: '12px' }}>
-                          <button
-                            type="button"
-                            className="btn xs"
-                            onClick={() => setMatchingTxId(null)}
-                          >
-                            Hủy
-                          </button>
-                          <button
-                            type="button"
-                            className="btn xs primary"
-                            style={{ backgroundColor: '#ea580c', borderColor: '#ea580c', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
-                            onClick={() => handleConfirmMatch(t)}
-                            disabled={t.dir === 'out' ? (matchMode === 'proposal' ? !selectedProposalId : !selectedCat) : false}
-                          >
-                            <Check size={13} />
-                            <span>Xác nhận phân loại nguồn tiền</span>
-                          </button>
+                            {matchCategory === 'debt' && contractInput && (() => {
+                              const c = contracts.find((item) => item.id.toUpperCase() === contractInput.trim().toUpperCase());
+                              if (!c) return null;
+                              return (
+                                <div
+                                  style={{
+                                    padding: '8px 12px',
+                                    borderRadius: '6px',
+                                    backgroundColor: isIncome ? 'rgba(16, 185, 129, 0.08)' : 'rgba(20, 184, 166, 0.08)',
+                                    border: `1px solid ${isIncome ? 'rgba(16, 185, 129, 0.25)' : 'rgba(20, 184, 166, 0.25)'}`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    flexWrap: 'wrap',
+                                    gap: '8px',
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: isIncome ? 'var(--good)' : 'var(--teal)' }}>
+                                    <FileText size={14} />
+                                    <span>
+                                      {isIncome ? 'Thu tiền công nợ hợp đồng: ' : 'Đối soát / Tạm ứng hợp đồng: '}
+                                      <b>[{c.id}] {c.customer}</b> ({c.kind === 'KH' ? 'HĐ Khách hàng' : 'Tư vấn viên'})
+                                    </span>
+                                  </div>
+                                  <div style={{ color: 'var(--ink)', fontFamily: 'var(--f-num)', fontSize: '11.5px' }}>
+                                    <span>Trị giá hợp đồng: <b>{fmt(c.fee)} đ</b></span>
+                                    {c.due && <span style={{ marginLeft: '12px', color: 'var(--muted)' }}>Hạn thanh toán: {c.due}</span>}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {matchCategory === 'other_income' && selectedCat && (() => {
+                              const inc = otherIncomeOptions.find((item) => item.value === selectedCat);
+                              return (
+                                <div
+                                  style={{
+                                    padding: '8px 12px',
+                                    borderRadius: '6px',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    flexWrap: 'wrap',
+                                    gap: '8px',
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--good)' }}>
+                                    <Check size={14} />
+                                    <span>Nh\u00f3m h\u1ea1ch to\u00e1n: <b>{inc?.label || selectedCat}</b></span>
+                                  </div>
+                                  <div style={{ color: 'var(--ink)', fontFamily: 'var(--f-num)', fontSize: '11.5px' }}>
+                                    <span>{incomeDescription.trim() || 'Ch\u01b0a nh\u1eadp di\u1ec5n gi\u1ea3i ngu\u1ed3n thu'}</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+
+                          {/* Nút hành động */}
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px', borderTop: '1px solid var(--line)', paddingTop: '12px' }}>
+                            <button
+                              type="button"
+                              className="btn xs"
+                              onClick={() => setMatchingTxId(null)}
+                            >
+                              Hủy
+                            </button>
+                            <button
+                              type="button"
+                              className="btn xs primary"
+                              style={{ backgroundColor: themeColor, borderColor: themeColor, display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                              onClick={() => handleConfirmMatch(t)}
+                              disabled={
+                                !isIncome
+                                  ? (matchCategory === 'proposal' ? (!selectedProposalId || !approvedProposals.some((p) => p.id === selectedProposalId)) : matchCategory === 'opex' ? !selectedCat : false)
+                                  : (matchCategory === 'other_income' ? (!selectedCat || !incomeDescription.trim()) : false)
+                              }
+                            >
+                              <Check size={13} />
+                              <span>{isIncome ? 'Xác nhận ghi nhận nguồn thu' : 'Xác nhận phân loại nguồn chi'}</span>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
+                      </td>
+                    </tr>
+                  );
+                })()}
               </React.Fragment>
             );
           })}

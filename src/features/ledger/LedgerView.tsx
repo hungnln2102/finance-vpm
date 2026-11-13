@@ -221,6 +221,13 @@ export const LedgerView: React.FC = () => {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   <button
                     type="button"
+                    className={`btn xs ${f === 'all' || !['in', 'out', 'unlisted'].includes(f) ? 'primary' : ''}`}
+                    onClick={() => setLedgerFilter('all')}
+                  >
+                    Tất cả ({countAll})
+                  </button>
+                  <button
+                    type="button"
                     className={`btn xs ${f === 'unlisted' ? 'primary' : ''}`}
                     onClick={() => setLedgerFilter('unlisted')}
                     style={
@@ -231,13 +238,6 @@ export const LedgerView: React.FC = () => {
                     title="Các giao dịch đã trừ/cộng tiền tài sản nhưng chưa làm rõ nguồn tiền (chưa khớp Kế hoạch hoặc Chi phí khác)"
                   >
                     ⚡ Chưa liệt kê ({countUnlisted})
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn xs ${f === 'all' || !['in', 'out', 'unlisted'].includes(f) ? 'primary' : ''}`}
-                    onClick={() => setLedgerFilter('all')}
-                  >
-                    Tất cả ({countAll})
                   </button>
                   <button
                     type="button"
@@ -303,6 +303,7 @@ export const LedgerView: React.FC = () => {
               canEdit={canDo('edit')}
               locked={locked}
               proposals={state.proposals}
+              contracts={state.contracts}
               isUnlistedTab={f === 'unlisted'}
               onEditTx={setEditTx}
               onUpdateTx={updateTransaction}

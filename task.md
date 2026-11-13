@@ -16,3 +16,15 @@
 - [x] Bỏ ô thông báo trạng thái góc trái và chuyển huy hiệu tài khoản xuống chân thanh menu.
 - [x] Thêm menu tài khoản mở rộng với nút Đăng xuất, không dùng thao tác xóa dữ liệu.
 - [x] Kiểm tra responsive và `npm run build` sau thay đổi giao diện.
+
+- [x] Cho phép nhập và lưu diễn giải tùy biến bắt buộc cho nguồn thu "Thu khác" trong `LedgerDataTable.tsx`.
+- [x] Tinh gọn cột "Diễn giải & Chứng từ": gom cảnh báo, bỏ tag kế hoạch/trạng thái lặp và chuyển mã kế hoạch sang cột Phân loại.
+- [x] Chạy `npm run build` thành công sau thay đổi giao diện và logic.
+
+- [x] Tách luồng tạo danh mục cost khỏi phiếu điều chỉnh định mức; form tạo cost gồm mã, tên danh mục và số tiền.
+
+- [x] Hiển thị nút phê duyệt hoặc từ chối trong cột thao tác của kế hoạch theo đúng trạng thái và quyền duyệt.
+
+- [x] Thay role mô phỏng bằng đăng nhập bắt buộc, session server-side và tài khoản Master PostgreSQL.
+
+- [x] Bỏ nút số lượng biên lai; mở danh sách biên lai bằng click dòng kế hoạch hoặc chevron.

@@ -229,34 +229,8 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
                     {/* Cột 7: Thao tác & Nút Xem Biên Lai */}
                     <td style={{ verticalAlign: 'top', paddingTop: '14px', paddingBottom: '14px', textAlign: 'center' }}>
                       <div style={{ display: 'inline-flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleExpand(p.id);
-                          }}
-                          className="btn btn-ghost xs"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            color: matchedReceipts.length > 0 ? 'var(--teal)' : 'var(--muted)',
-                            backgroundColor: isExpanded ? 'rgba(20, 184, 166, 0.14)' : 'rgba(20, 184, 166, 0.06)',
-                            border: '1px solid rgba(20, 184, 166, 0.25)',
-                            borderRadius: '4px',
-                            fontSize: '11.5px',
-                            fontWeight: 600,
-                            padding: '3px 8px'
-                          }}
-                          title="Bấm xem các biên lai được khớp với kế hoạch này"
-                        >
-                          <Receipt size={13} />
-                          <span>{matchedReceipts.length} biên lai</span>
-                          {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                        </button>
-
                         {/* Thao tác Phê duyệt nhanh cho Admin */}
-                        {canReview && p.status === 'pending_admin' && (
+                        {(uiRole === 'admin' || uiRole === 'vpm') && canReview && p.status === 'pending_admin' && (
                           <div style={{ display: 'flex', gap: '4px' }}>
                             <button
                               type="button"
@@ -282,12 +256,13 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
                               title="Từ chối kế hoạch"
                             >
                               <XCircle size={11} />
+                              <span>Từ chối</span>
                             </button>
                           </div>
                         )}
 
                         {/* Thao tác Phê duyệt cho Master */}
-                        {(uiRole === 'master' || uiRole === 'giau') && p.status !== 'approved' && (
+                        {(uiRole === 'master' || uiRole === 'giau') && p.status === 'pending_master' && (
                           <div style={{ display: 'flex', gap: '4px' }}>
                             <button
                               type="button"
@@ -306,7 +281,7 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
                               title="Master chính thức phê duyệt"
                             >
                               <ShieldCheck size={11} />
-                              <span>Duyệt</span>
+                              <span>Phê duyệt</span>
                             </button>
                             <button
                               type="button"
@@ -319,6 +294,7 @@ export const ProposalListTable: React.FC<ProposalListTableProps> = ({
                               title="Master từ chối"
                             >
                               <XCircle size={11} />
+                              <span>Từ chối</span>
                             </button>
                           </div>
                         )}

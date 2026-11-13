@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from './../../context/useApp';
 import { TODAY } from '../../data/constants';
 import { calculateDebt } from '../../services/debtService';
 import { DebtKpiTiles } from './components/DebtKpiTiles';
-import { DebtAddContractForm } from './components/DebtAddContractForm';
 import { DebtTable } from './components/DebtTable';
+import { DebtCreateModal } from './components/DebtCreateModal';
 
 export const DebtView: React.FC = () => {
   const { 
@@ -19,6 +19,7 @@ export const DebtView: React.FC = () => {
 
   const k = ui.debtKind;
   const onlyOver = ui.debtOnlyOver;
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Summary Metrics
   const currentKindContracts = state.contracts.filter((c) => c.kind === k);
@@ -42,15 +43,7 @@ export const DebtView: React.FC = () => {
         overdueCount={overdueCount}
       />
 
-      {/* Add Contract Form */}
-      {canDo('contract') && (
-        <DebtAddContractForm
-          kind={k}
-          onAddContract={addContract}
-        />
-      )}
-
-      {/* Main Table Card */}
+      {/* Main Table Card với nút + Tạo công nợ & 2 cột Thu - Chi */}
       <DebtTable
         kind={k}
         contracts={state.contracts}
@@ -63,6 +56,15 @@ export const DebtView: React.FC = () => {
         onSetKind={setDebtKind}
         onSetOnlyOver={setDebtOnlyOver}
         onApproveDiscount={approveDiscount}
+        onOpenCreateModal={() => setShowCreateModal(true)}
+      />
+
+      {/* Modal Popup Tạo Công Nợ (Thu hoặc Chi) */}
+      <DebtCreateModal
+        show={showCreateModal}
+        defaultKind={k}
+        onClose={() => setShowCreateModal(false)}
+        onAddContract={addContract}
       />
     </div>
   );

@@ -3,7 +3,7 @@ import { Contract, ContractKind, Transaction } from '../../../types';
 import { DISC_LIMIT, TODAY } from '../../../data/constants';
 import { fmt, dmy } from '../../../utils/formatters';
 import { calculateDebt } from '../../../services/debtService';
-import { CheckCircle, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle, AlertTriangle, ChevronDown, ChevronUp, PlusCircle } from 'lucide-react';
 
 interface DebtTableProps {
   kind: ContractKind;
@@ -17,6 +17,7 @@ interface DebtTableProps {
   onSetKind: (k: ContractKind) => void;
   onSetOnlyOver: (onlyOver: boolean) => void;
   onApproveDiscount: (id: string) => void;
+  onOpenCreateModal?: () => void;
 }
 
 export const DebtTable: React.FC<DebtTableProps> = ({
@@ -31,6 +32,7 @@ export const DebtTable: React.FC<DebtTableProps> = ({
   onSetKind,
   onSetOnlyOver,
   onApproveDiscount,
+  onOpenCreateModal,
 }) => {
   const [expandedContract, setExpandedContract] = useState<string | null>(null);
 
@@ -40,91 +42,153 @@ export const DebtTable: React.FC<DebtTableProps> = ({
   }
 
   return (
-    <section className="card-box">
-      {/* Sub-tab Kind Filter */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
+    <section className="card-box" style={{ padding: '20px 22px' }}>
+      {/* Sub-tab Kind Filter & Actions */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
             type="button"
-            className={`btn ${kind === 'KH' ? 'primary' : ''}`}
+            className={`btn xs ${kind === 'KH' ? 'primary' : ''}`}
             onClick={() => onSetKind('KH')}
           >
             Công nợ khách hàng ({totalKH})
           </button>
           <button
             type="button"
-            className={`btn ${kind === 'TV' ? 'primary' : ''}`}
+            className={`btn xs ${kind === 'TV' ? 'primary' : ''}`}
             onClick={() => onSetKind('TV')}
           >
             Công nợ đội ngũ / tư vấn ({totalTV})
           </button>
         </div>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
-          <input
-            type="checkbox"
-            checked={onlyOver}
-            onChange={(e) => onSetOnlyOver(e.target.checked)}
-          />
-          <span>Chỉ hiện nợ quá hạn ({overdueCount})</span>
-        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
+            <input
+              type="checkbox"
+              checked={onlyOver}
+              onChange={(e) => onSetOnlyOver(e.target.checked)}
+            />
+            <span>Chỉ hiện nợ quá hạn ({overdueCount})</span>
+          </label>
+
+          {onOpenCreateModal && (
+            <button
+              type="button"
+              className="btn primary xs"
+              onClick={onOpenCreateModal}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 14px', fontWeight: 600 }}
+            >
+              <PlusCircle size={14} />
+              <span>+ Tạo công nợ</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Table */}
+      {/* Table với 2 cột rõ ràng Thu và Chi */}
       <div className="table-scroll">
         <table>
           <thead>
             <tr>
-              <th>Mã</th>
-              <th>Khách hàng / HĐ</th>
-              <th className="num">Phí HĐ</th>
-              <th className="num">Chiết khấu</th>
-              <th className="num">Phải thu</th>
-              <th className="num">Đã thu</th>
-              <th className="num">Còn nợ</th>
-              <th>Hạn thanh toán</th>
-              <th>Trạng thái</th>
-              <th style={{ textAlign: 'right' }}>Thao tác</th>
+              <th style={{ width: '85px' }}>Mã</th>
+              <th>Khách hàng / Đối tượng</th>
+              <th className="num" style={{ width: '125px' }}>Tổng giá trị</th>
+              <th className="num" style={{ width: '110px' }}>Chiết khấu</th>
+              <th className="num" style={{ width: '150px' }}>Thu (Tiền vào)</th>
+              <th className="num" style={{ width: '150px' }}>Chi (Tiền ra)</th>
+              <th className="num" style={{ width: '130px' }}>Còn nợ</th>
+              <th style={{ width: '110px' }}>Hạn TT</th>
+              <th style={{ width: '120px' }}>Trạng thái</th>
+              <th style={{ textAlign: 'right', width: '100px' }}>Thao tác</th>
             </tr>
           </thead>
           <tbody>
             {list.map((c) => {
               const d = calculateDebt(c, transactions, TODAY);
               const isExpanded = expandedContract === c.id;
+              const isThu = c.flow === 'in' || (!c.flow && c.kind === 'KH');
 
               return (
                 <React.Fragment key={c.id}>
                   <tr>
-                    <td style={{ fontFamily: 'var(--f-num)', fontWeight: 600 }}>{c.id}</td>
+                    {/* Mã */}
+                    <td style={{ fontFamily: 'var(--f-num)', fontWeight: 700, color: isThu ? 'var(--good)' : '#ea580c' }}>
+                      {c.id}
+                    </td>
+
+                    {/* Đối tượng */}
                     <td>
-                      <div style={{ fontWeight: 600 }}>{c.customer}</div>
+                      <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{c.customer}</div>
                       <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
                         {c.no ? `Số HĐ: ${c.no}` : ''} {c.tv ? `TV: ${c.tv}` : ''}
                       </div>
                     </td>
-                    <td className="num">{fmt(c.fee)}</td>
+
+                    {/* Tổng giá trị */}
+                    <td className="num" style={{ fontFamily: 'var(--f-num)', fontWeight: 600 }}>
+                      {fmt(c.fee)} đ
+                    </td>
+
+                    {/* Chiết khấu */}
                     <td className="num">
-                      <div>{c.disc ? fmt(c.disc) : '—'}</div>
+                      <div>{c.disc ? `${fmt(c.disc)} đ` : '—'}</div>
                       {c.fee > 0 && c.disc > 0 && (
                         <div style={{ fontSize: '11px', color: d.rate > DISC_LIMIT ? 'var(--bad)' : 'var(--muted)' }}>
                           {(d.rate * 100).toFixed(1)}%
                         </div>
                       )}
                       {!d.discOk && (
-                        <div style={{ fontSize: '11px', color: 'var(--bad)', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--bad)', display: 'flex', alignItems: 'center', gap: '3px', justifyContent: 'flex-end' }}>
                           <AlertTriangle size={11} />
                           <span>Chờ duyệt</span>
                         </div>
                       )}
                     </td>
-                    <td className="num" style={{ fontWeight: 600 }}>{fmt(d.due)}</td>
-                    <td className="num" style={{ color: 'var(--good)', fontWeight: 600 }}>
-                      {d.paid ? fmt(d.paid) : '—'}
+
+                    {/* Cột 1: Thu (Tiền vào) */}
+                    <td className="num">
+                      {isThu ? (
+                        <div>
+                          <div style={{ color: 'var(--good)', fontWeight: 700, fontFamily: 'var(--f-num)' }}>
+                            +{fmt(d.paid)} đ
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                            Phải thu: {fmt(d.due)} đ
+                          </div>
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--muted)' }}>—</span>
+                      )}
                     </td>
-                    <td className="num" style={{ color: d.left > 0 ? (d.over > 0 ? 'var(--bad)' : 'var(--ink)') : 'var(--muted)', fontWeight: 600 }}>
-                      {d.left !== 0 ? fmt(d.left) : '0'}
+
+                    {/* Cột 2: Chi (Tiền ra) */}
+                    <td className="num">
+                      {!isThu ? (
+                        <div>
+                          <div style={{ color: '#ea580c', fontWeight: 700, fontFamily: 'var(--f-num)' }}>
+                            -{fmt(d.paid)} đ
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                            Phải chi: {fmt(d.due)} đ
+                          </div>
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--muted)' }}>—</span>
+                      )}
                     </td>
-                    <td style={{ whiteSpace: 'nowrap', fontSize: '12.5px' }}>{dmy(c.due)}</td>
+
+                    {/* Còn nợ */}
+                    <td className="num" style={{ color: d.left > 0 ? (d.over > 0 ? 'var(--bad)' : 'var(--ink)') : 'var(--muted)', fontWeight: 700, fontFamily: 'var(--f-num)' }}>
+                      {d.left !== 0 ? `${fmt(d.left)} đ` : '0 đ'}
+                    </td>
+
+                    {/* Hạn thanh toán */}
+                    <td style={{ whiteSpace: 'nowrap', fontSize: '12.5px', fontFamily: 'var(--f-num)' }}>
+                      {dmy(c.due)}
+                    </td>
+
+                    {/* Trạng thái */}
                     <td>
                       {d.status === 'Quá hạn' ? (
                         <span className="chip bad">Quá hạn {d.over} ngày</span>
@@ -136,6 +200,8 @@ export const DebtTable: React.FC<DebtTableProps> = ({
                         <span className="chip">Trong hạn</span>
                       )}
                     </td>
+
+                    {/* Thao tác */}
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'inline-flex', gap: '4px' }}>
                         {!d.discOk && canApproveDisc && (
@@ -143,6 +209,7 @@ export const DebtTable: React.FC<DebtTableProps> = ({
                             type="button"
                             className="btn xs primary"
                             onClick={() => onApproveDiscount(c.id)}
+                            title="Duyệt chiết khấu"
                           >
                             <CheckCircle size={12} />
                             <span>Duyệt CK</span>
@@ -154,7 +221,7 @@ export const DebtTable: React.FC<DebtTableProps> = ({
                             type="button"
                             className="btn xs"
                             onClick={() => setExpandedContract(isExpanded ? null : c.id)}
-                            title="Xem chi tiết các đợt tiền đã thanh toán"
+                            title="Xem chi tiết các đợt thanh toán"
                           >
                             <span>{d.pays.length} GD</span>
                             {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -169,12 +236,12 @@ export const DebtTable: React.FC<DebtTableProps> = ({
                     <tr>
                       <td colSpan={10} style={{ background: 'var(--soft)', padding: '12px 18px' }}>
                         <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>
-                          Lịch sử thu tiền của hợp đồng {c.id} ({c.customer}):
+                          Lịch sử đối soát thanh toán của hợp đồng {c.id} ({c.customer}):
                         </div>
                         <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12.5px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {d.pays.map((p) => (
                             <li key={p.id}>
-                              <b>{dmy(p.date)}</b> · {p.id} · <span style={{ color: 'var(--good)' }}>+{fmt(p.amt)} đ</span> · ({p.acc}) · {p.desc}
+                              <b>{dmy(p.date)}</b> · {p.id} · <span style={{ color: p.dir === 'out' ? 'var(--bad)' : 'var(--good)', fontWeight: 600 }}>{p.dir === 'out' ? '-' : '+'}{fmt(p.amt)} đ</span> · ({p.acc}) · {p.desc}
                             </li>
                           ))}
                         </ul>

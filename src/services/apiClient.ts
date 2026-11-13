@@ -2,9 +2,41 @@
  * API Client kết nối Frontend với Local Backend (PostgreSQL + Google Sheet Dual-Sync)
  */
 
-import { AppState, Transaction, Contract, AccountItem, Proposal, CostAdjustment, GiftMovement } from '../types';
+import { AppState, Transaction, Contract, AccountItem, Proposal, CostAdjustment, GiftMovement, AuthenticatedUser } from '../types';
 
 export const apiClient = {
+  async login(username: string, password: string): Promise<{ user?: AuthenticatedUser; error?: string }> {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      return res.ok ? { user: data.user } : { error: data.error || 'Không thể đăng nhập.' };
+    } catch {
+      return { error: 'Không thể kết nối máy chủ đăng nhập.' };
+    }
+  },
+
+  async getCurrentUser(): Promise<AuthenticatedUser | null> {
+    try {
+      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.user as AuthenticatedUser;
+    } catch {
+      return null;
+    }
+  },
+
+  async logout(): Promise<void> {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {}
+  },
+
   /**
    * Kiểm tra tình trạng kết nối Backend & PostgreSQL
    */

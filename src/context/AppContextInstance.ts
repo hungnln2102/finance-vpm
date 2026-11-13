@@ -67,6 +67,8 @@ export interface AppContextType {
     reason: string;
   }) => void;
   approveCostAdjustment: (id: string) => void;
+  rejectCostAdjustment: (id: string) => void;
+  toggleCostCategoryStatus: (month: string, category: string) => void;
   addContract: (data: Omit<Contract, 'id'>) => void;
   approveDiscount: (id: string) => void;
   addGiftMovement: (mv: Omit<GiftMovement, 'd'>) => void;
@@ -74,6 +76,7 @@ export interface AppContextType {
   applyAttendanceSuggestions: () => void;
   updateStaffAdvance: (staffId: string, advance: number) => void;
   updateBudget: (month: string, category: string, amount: number) => void;
+  addCostCategory: (month: string, code: string, name: string, amount: number) => void;
   updateClosing: (month: string, key: string, value: any) => void;
   lockMonth: (month: string) => void;
   unlockMonth: (month: string) => void;

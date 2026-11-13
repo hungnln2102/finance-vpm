@@ -15,6 +15,13 @@ export type Direction = 'in' | 'out';
 
 export type WorkflowRole = 'operator' | 'admin' | 'master';
 
+export interface AuthenticatedUser {
+  id: string;
+  username: string;
+  displayName: string;
+  role: WorkflowRole;
+}
+
 export type TransactionStatus = 
   | 'draft' 
   | 'pending_admin' 
@@ -139,6 +146,7 @@ export type ContractKind = 'KH' | 'TV';
 export interface Contract {
   id: string;
   kind: ContractKind;
+  flow?: 'in' | 'out'; // 'in' = Thu (Phải thu), 'out' = Chi (Phải chi / Tạm ứng)
   customer: string;
   no: string;
   tv: string;
@@ -236,6 +244,8 @@ export interface AppState {
   holidays: string[];
   att: Record<string, AttendanceRecord>;
   budget: Record<string, BudgetMap>;
+  costCategories?: Record<string, Record<string, string>>;
+  disabledCostCategories?: Record<string, string[]>;
   costAdjustments: CostAdjustment[];
   webhooks: BankWebhookLog[];
   proposals: Proposal[];

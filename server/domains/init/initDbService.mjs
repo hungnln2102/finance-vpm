@@ -3,12 +3,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { pool, SCHEMA } from '../../config/dbPool.mjs';
 import { recalculateMonthlyBalances } from '../ledger/ledgerService.mjs';
+import { bootstrapMasterAccount } from '../auth/authService.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
- * Khởi tạo Schema và 12 bảng dữ liệu trong PostgreSQL (finance_vpm)
+ * Khởi tạo Schema và các bảng dữ liệu trong PostgreSQL (finance_vpm)
  */
 export async function initDb() {
   const client = await pool.connect();
@@ -16,7 +17,32 @@ export async function initDb() {
     console.log(`🔌 Kết nối PostgreSQL thành công. Đang khởi tạo schema: ${SCHEMA}...`);
     await client.query('BEGIN');
 
+    await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
     await client.query(`CREATE SCHEMA IF NOT EXISTS ${SCHEMA};`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ${SCHEMA}.user_accounts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        username VARCHAR(128) NOT NULL UNIQUE,
+        display_name VARCHAR(128) NOT NULL,
+        role VARCHAR(32) NOT NULL CHECK (role IN ('operator', 'admin', 'master')),
+        password_hash TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        last_login_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS ${SCHEMA}.auth_sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_account_id UUID NOT NULL REFERENCES ${SCHEMA}.user_accounts(id) ON DELETE CASCADE,
+        token_hash CHAR(64) NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        revoked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_active ON ${SCHEMA}.auth_sessions(user_account_id, expires_at) WHERE revoked_at IS NULL;
+    `);
+    await bootstrapMasterAccount(client);
 
     // 1. Transactions
     await client.query(`

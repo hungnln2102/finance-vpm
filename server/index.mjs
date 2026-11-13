@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import express from 'express';
-import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -19,6 +18,7 @@ import budgetRoutes from './domains/budget/budgetRoutes.mjs';
 import giftsRoutes from './domains/gifts/giftsRoutes.mjs';
 import auditRoutes from './domains/audit/auditRoutes.mjs';
 import syncRoutes from './domains/sync/syncRoutes.mjs';
+import authRoutes, { requireAuth, requireWriteAccess } from './domains/auth/authRoutes.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +27,6 @@ const distPath = path.resolve(__dirname, '../dist');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // System Health & Full State Endpoints
@@ -45,6 +44,10 @@ app.get('/api/health', async (req, res) => {
     res.status(500).json({ status: 'error', error: err.message });
   }
 });
+
+app.use('/api', authRoutes);
+app.use('/api', requireAuth);
+app.use('/api', requireWriteAccess);
 
 app.get('/api/state', async (req, res) => {
   try {

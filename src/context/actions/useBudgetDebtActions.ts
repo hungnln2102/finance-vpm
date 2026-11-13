@@ -29,7 +29,6 @@ export function useBudgetDebtActions({
       reason: string;
     }) => {
       const nextId = `ADJ-${String(state.costAdjustments.length + 1).padStart(2, '0')}`;
-      const isMaster = ui.role === 'master' || ui.role === 'giau';
       const newAdj: CostAdjustment = {
         id: nextId,
         month: data.month,
@@ -37,30 +36,21 @@ export function useBudgetDebtActions({
         oldBudget: data.oldBudget,
         newBudget: data.newBudget,
         reason: data.reason.trim(),
-        status: isMaster ? 'approved' : 'pending',
-        approvedBy: isMaster ? 'Sếp Mavryk' : undefined,
+        status: 'pending',
+        approvedBy: undefined,
         createdAt: TODAY
       };
 
-      setState((prev) => {
-        let updatedBudget = prev.budget;
-        if (newAdj.status === 'approved') {
-          const mBudget = { ...(prev.budget[data.month] || {}) };
-          mBudget[data.category] = data.newBudget;
-          updatedBudget = { ...prev.budget, [data.month]: mBudget };
-        }
-        return {
-          ...prev,
-          costAdjustments: [newAdj, ...prev.costAdjustments],
-          budget: updatedBudget
-        };
-      });
+      setState((prev) => ({
+        ...prev,
+        costAdjustments: [newAdj, ...prev.costAdjustments]
+      }));
 
       apiClient.addCostAdjustment(newAdj);
-      addLog(`Điều chỉnh chi phí định mức ${newAdj.category} tháng ${data.month}`);
-      showToast(newAdj.status === 'approved' ? 'Đã phê duyệt điều chỉnh chi phí' : 'Đã gửi yêu cầu điều chỉnh cost', 'success');
+      addLog(`Tạo phiếu đề xuất điều chỉnh chi phí định mức ${newAdj.category} tháng ${data.month}`);
+      showToast('Đã gửi yêu cầu điều chỉnh cost (Chờ phê duyệt)', 'info');
     },
-    [state.costAdjustments.length, ui.role, addLog, showToast, setState]
+    [state.costAdjustments.length, addLog, showToast, setState]
   );
 
   const approveCostAdjustment = useCallback(
@@ -93,6 +83,47 @@ export function useBudgetDebtActions({
     [state.costAdjustments, addLog, showToast, setState]
   );
 
+  const rejectCostAdjustment = useCallback(
+    (id: string) => {
+      const adj = state.costAdjustments.find((a) => a.id === id);
+      if (!adj) return;
+
+      const rejectedAdj = { ...adj, status: 'rejected' as const, approvedBy: 'Sếp Mavryk (Từ chối)' };
+
+      setState((prev) => ({
+        ...prev,
+        costAdjustments: prev.costAdjustments.map((a) =>
+          a.id === id ? rejectedAdj : a
+        )
+      }));
+
+      apiClient.addCostAdjustment(rejectedAdj);
+      addLog(`Master từ chối điều chỉnh cost ${adj.id}`);
+      showToast('Đã từ chối điều chỉnh định mức cost', 'warn');
+    },
+    [state.costAdjustments, addLog, showToast, setState]
+  );
+
+  const toggleCostCategoryStatus = useCallback(
+    (month: string, category: string) => {
+      setState((prev) => {
+        const map = { ...(prev.disabledCostCategories || {}) };
+        const currentList = [...(map[month] || [])];
+        const isOff = currentList.includes(category);
+        const nextList = isOff 
+          ? currentList.filter((c) => c !== category)
+          : [...currentList, category];
+        map[month] = nextList;
+        return {
+          ...prev,
+          disabledCostCategories: map
+        };
+      });
+      addLog(`Thay đổi trạng thái On/Off chi phí ${category} tháng ${month}`);
+    },
+    [addLog, setState]
+  );
+
   const updateBudget = useCallback(
     (month: string, category: string, amount: number) => {
       setState((prev) => {
@@ -112,6 +143,43 @@ export function useBudgetDebtActions({
       });
       addLog(`Giao ngân sách ${monthLabel(month)}`);
       showToast('Đã lưu ngân sách', 'success');
+    },
+    [addLog, showToast, setState]
+  );
+
+  const addCostCategory = useCallback(
+    (month: string, code: string, name: string, amount: number) => {
+      const categoryCode = code.trim().toUpperCase();
+      const categoryName = name.trim();
+
+      if (!categoryCode || !categoryName || amount <= 0) return;
+
+      setState((prev) => {
+        const existingCategories = prev.costCategories?.[month] || {};
+        if (existingCategories[categoryCode] || prev.budget[month]?.[categoryCode] !== undefined) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          costCategories: {
+            ...prev.costCategories,
+            [month]: {
+              ...existingCategories,
+              [categoryCode]: categoryName
+            }
+          },
+          budget: {
+            ...prev.budget,
+            [month]: {
+              ...(prev.budget[month] || {}),
+              [categoryCode]: amount
+            }
+          }
+        };
+      });
+      addLog(`Thêm danh mục chi phí ${categoryCode} · ${categoryName} tháng ${month}`);
+      showToast('Đã thêm danh mục cost', 'success');
     },
     [addLog, showToast, setState]
   );
@@ -158,7 +226,10 @@ export function useBudgetDebtActions({
   return {
     addCostAdjustment,
     approveCostAdjustment,
+    rejectCostAdjustment,
+    toggleCostCategoryStatus,
     updateBudget,
+    addCostCategory,
     addContract,
     approveDiscount
   };

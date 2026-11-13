@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AppProvider } from './context/AppContext';
 import { useApp } from './context/useApp';
 import { RailNav } from './shared/components/layout/RailNav';
@@ -13,6 +13,14 @@ import { GiftsView } from './features/gifts/GiftsView';
 import { PayrollView } from './features/payroll/PayrollView';
 import { ReportView } from './features/report/ReportView';
 import { ClosingView } from './features/closing/ClosingView';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { LoginView } from './features/auth/LoginView';
+
+const RoleSessionBridge: React.FC<{ role: 'operator' | 'admin' | 'master' }> = ({ role }) => {
+  const { setRole } = useApp();
+  useEffect(() => setRole(role), [role, setRole]);
+  return null;
+};
 
 const MainWorkstation: React.FC = () => {
   const { ui } = useApp();
@@ -39,10 +47,15 @@ const MainWorkstation: React.FC = () => {
 };
 
 export const App: React.FC = () => {
+  const AuthenticatedApp: React.FC = () => {
+    const { user, loading } = useAuth();
+    if (loading) return <div className="auth-loading">Đang kiểm tra phiên đăng nhập...</div>;
+    if (!user) return <LoginView />;
+    return <AppProvider><RoleSessionBridge role={user.role} /><MainWorkstation /></AppProvider>;
+  };
+
   return (
-    <AppProvider>
-      <MainWorkstation />
-    </AppProvider>
+    <AuthProvider><AuthenticatedApp /></AuthProvider>
   );
 };
 

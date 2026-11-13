@@ -6,12 +6,24 @@ import { BudgetKpiCards } from './components/BudgetKpiCards';
 import { BudgetVarianceTable } from './components/BudgetVarianceTable';
 import { BudgetAdjustmentLog } from './components/BudgetAdjustmentLog';
 import { BudgetAdjustmentModal } from './components/BudgetAdjustmentModal';
+import { CreateCostCategoryModal } from './components/CreateCostCategoryModal';
 
 export const BudgetControlView: React.FC = () => {
-  const { state, ui, canDo, updateBudget, addCostAdjustment, approveCostAdjustment } = useApp();
+  const { 
+    state, 
+    ui, 
+    canDo, 
+    updateBudget, 
+    addCostCategory,
+    addCostAdjustment, 
+    approveCostAdjustment,
+    rejectCostAdjustment,
+    toggleCostCategoryStatus
+  } = useApp();
   const m = ui.month;
 
   const monthBudget = state.budget[m] || {};
+  const disabledCategories = state.disabledCostCategories?.[m] || [];
   
   // Calculate actual OPEX spend in the selected month from posted transactions
   const opexTx = state.tx.filter(
@@ -24,13 +36,20 @@ export const BudgetControlView: React.FC = () => {
     actualByCat[c] = (actualByCat[c] || 0) + t.amt;
   }
 
-  const allCategories = Object.keys(CATS);
+  const categoryNames = { ...CATS, ...(state.costCategories?.[m] || {}) };
+  const allCategories = Array.from(new Set([
+    ...Object.keys(categoryNames),
+    ...Object.keys(monthBudget),
+    ...Object.keys(actualByCat)
+  ]));
   const totalBudget = allCategories.reduce((s, c) => s + (monthBudget[c] || 0), 0);
   const totalActual = allCategories.reduce((s, c) => s + (actualByCat[c] || 0), 0);
   const totalVariance = totalBudget - totalActual;
   const isOverBudget = totalActual > totalBudget && totalBudget > 0;
 
   const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedCatForAdjust, setSelectedCatForAdjust] = useState<string | undefined>(undefined);
   const monthAdjustments = (state.costAdjustments || []).filter((a) => a.month === m);
 
   return (
@@ -49,6 +68,7 @@ export const BudgetControlView: React.FC = () => {
       <BudgetVarianceTable
         month={m}
         allCategories={allCategories}
+        categoryNames={categoryNames}
         monthBudget={monthBudget}
         actualByCat={actualByCat}
         totalBudget={totalBudget}
@@ -56,8 +76,14 @@ export const BudgetControlView: React.FC = () => {
         totalVariance={totalVariance}
         isOverBudget={isOverBudget}
         canEditBudget={canDo('budget')}
+        disabledCategories={disabledCategories}
+        onToggleCategory={(cat) => toggleCostCategoryStatus(m, cat)}
         onUpdateBudget={updateBudget}
-        onOpenAdjustModal={() => setShowAdjustModal(true)}
+        onOpenCreateModal={() => setShowCreateModal(true)}
+        onOpenAdjustModal={(cat) => {
+          setSelectedCatForAdjust(cat);
+          setShowAdjustModal(true);
+        }}
       />
 
       {/* Cost Adjustments Log & Master Approval */}
@@ -66,15 +92,29 @@ export const BudgetControlView: React.FC = () => {
         adjustments={monthAdjustments}
         uiRole={ui.role}
         onApprove={approveCostAdjustment}
+        onReject={rejectCostAdjustment}
       />
 
-      {/* Modal Yêu Cầu Điều Chỉnh Cost */}
+      {/* Modal Lập Phiếu Thêm/Điều Chỉnh Cost */}
       <BudgetAdjustmentModal
         show={showAdjustModal}
         month={m}
         monthBudget={monthBudget}
-        onClose={() => setShowAdjustModal(false)}
+        categoryNames={categoryNames}
+        initialCategory={selectedCatForAdjust}
+        onClose={() => {
+          setShowAdjustModal(false);
+          setSelectedCatForAdjust(undefined);
+        }}
         onSubmit={addCostAdjustment}
+      />
+
+      <CreateCostCategoryModal
+        show={showCreateModal}
+        month={m}
+        existingCodes={allCategories}
+        onClose={() => setShowCreateModal(false)}
+        onSubmit={(code, name, amount) => addCostCategory(m, code, name, amount)}
       />
     </div>
   );

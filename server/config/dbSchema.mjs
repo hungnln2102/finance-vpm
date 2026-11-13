@@ -9,6 +9,8 @@ export const TABLES = {
   TRANSACTIONS: 'transactions',
   CONTRACTS: 'contracts',
   ACCOUNTS: 'accounts',
+  USER_ACCOUNTS: 'user_accounts',
+  AUTH_SESSIONS: 'auth_sessions',
   ATTENDANCE: 'attendance',
   STAFF: 'staff',
   GIFT_ITEMS: 'gift_items',

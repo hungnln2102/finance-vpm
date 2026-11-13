@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { detectAllIssues } from '../../../services/financeService';
 import { TODAY } from '../../../data/constants';
+import { useAuth } from '../../../context/AuthContext';
 
 interface NavItemConfig {
   id: ActiveTab;
@@ -26,7 +27,8 @@ interface NavItemConfig {
 }
 
 export const RailNav: React.FC = () => {
-  const { state, ui, setView, setRole, showToast } = useApp();
+  const { state, ui, setView, showToast } = useApp();
+  const { user, logout } = useAuth();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   const navItems: NavItemConfig[] = [
@@ -58,8 +60,8 @@ export const RailNav: React.FC = () => {
 
   const currentRoleDef = ROLE_DEFINITIONS[ui.role] || ROLE_DEFINITIONS.master;
 
-  const handleLogout = () => {
-    setRole('operator');
+  const handleLogout = async () => {
+    await logout();
     setAccountMenuOpen(false);
     showToast('\u0110\u00e3 \u0111\u0103ng xu\u1ea5t phi\u00ean hi\u1ec7n t\u1ea1i.', 'success');
   };
@@ -114,7 +116,7 @@ export const RailNav: React.FC = () => {
         >
           <span className="rail-account-avatar"><UserCheck size={16} /></span>
           <span className="rail-account-copy">
-            <strong>{currentRoleDef.name}</strong>
+            <strong>{user?.displayName || currentRoleDef.name}</strong>
             <small>{currentRoleDef.title}</small>
           </span>
           <ChevronUp className="rail-account-chevron" size={16} />
