@@ -45,3 +45,6 @@
 - [x] Khắc phục lưu chấm công báo lỗi giả khi đồng bộ Google Sheet lỗi: giữ PostgreSQL là kết quả lưu thành công và chỉ ghi cảnh báo đồng bộ.
 - [x] Chuẩn hóa dữ liệu nhân sự, chấm công log và phúc lợi: thêm phòng ban/ngày nhận việc; ghi `attendance_logs`; cập nhật `staff_benefits` khi làm Lễ/Chủ nhật trong cùng transaction.
 - [x] Cấu hình Vercel Serverless (`vercel.json`, `api/index.mjs`, `server/index.mjs`), tương thích Vercel Postgres / Neon (`server/config/dbPool.mjs`), cập nhật `.env` & `.env.example`, và push lên GitHub `origin/main`.
+- [x] Triển khai thành công Project `finance-vpm` (`prj_uYijTrmFvC2RsVm3MjZpmzbue26p`) lên Vercel Production (`https://finance-vpm.vercel.app`), cấu hình toàn bộ 8 Environment Variables, đồng bộ toàn bộ 21 bảng dữ liệu từ PostgreSQL Local lên Vercel Neon Postgres (`finance_vpm`) và xác minh `/api/health` trả về `200 OK`.
+- [x] Thực hiện Clear toàn bộ dữ liệu nghiệp vụ trên Vercel Postgres (`finance_vpm` schema trên Neon Cloud): truncate 19 bảng nghiệp vụ về `0 rows`, khởi tạo lại kỳ hiện tại `0 đ`, giữ nguyên `user_accounts` và 4 tài khoản quỹ mặc định.
+- [x] Nâng cấp phân quyền tài khoản `admin` thành role `master` trên cả Vercel Neon Cloud PostgreSQL và Local PostgreSQL, bảo đảm tài khoản `admin` có đầy đủ quyền thực thi các thao tác ghi dữ liệu (bật/tắt tài sản, ghi sổ, duyệt đề trình, cấu hình ngân sách).

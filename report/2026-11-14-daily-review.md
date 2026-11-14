@@ -18,3 +18,33 @@
   - `npx tsc --noEmit` -> Pass (Exit code 0).
   - `npm run build` -> Pass (`✓ built in 2.57s`, Exit code 0).
   - Kiểm thử khởi tạo `api/index.mjs` + `ensureServerInitialized()` -> Pass (`API serverless entry & DB init OK`).
+
+## [01:10] Hoàn tất Deploy Production trên Vercel & Đồng bộ dữ liệu lên Vercel Neon Postgres
+
+- **Phạm vi**:
+  - Khởi tạo project `finance-vpm` (`prj_uYijTrmFvC2RsVm3MjZpmzbue26p`) liên kết với GitHub `hungnln2102/finance-vpm`.
+  - Thiết lập 8 biến môi trường (`DATABASE_URL`, `POSTGRES_URL`, `DB_SCHEMA`, `DB_SSL`, `GOOGLE_SHEET_API_URL`, `AUTH_BOOTSTRAP_USERNAME`, `AUTH_BOOTSTRAP_PASSWORD`, `AUTH_BOOTSTRAP_DISPLAY_NAME`) cho cả 3 môi trường (`production`, `preview`, `development`).
+  - Khởi tạo schema `finance_vpm` trên Vercel Neon Postgres (`ep-lingering-moon-amgigamd-pooler.c-5.us-east-1.aws.neon.tech/neondb`) và migrate toàn bộ 21 bảng dữ liệu từ PostgreSQL Local lên Cloud.
+  - Redeploy Production (`dpl_AyXHK376zQUrz2NVJuk6PEyJV4TP`) và kiểm tra live endpoint `/api/health`.
+- **Trạng thái nghiệm thu**: ✅ Hoàn thành 100% (`READY` trên Production).
+- **Kiểm tra đã chạy**:
+  - `GET https://finance-vpm.vercel.app/api/health` -> `200 OK`: `{"status":"ok","database":"Vercel Postgres (Cloud)","schema":"finance_vpm","googleSheetSyncEnabled":true}`.
+
+## [11:12] Clear toàn bộ dữ liệu nghiệp vụ trên Vercel Postgres (Neon Cloud)
+
+- **Phạm vi**:
+  - Thực thi `TRUNCATE TABLE ... RESTART IDENTITY CASCADE` trong một transaction ACID trên Vercel Neon Postgres (`ep-lingering-moon-amgigamd-pooler.c-5.us-east-1.aws.neon.tech/neondb`, schema `finance_vpm`) đối với toàn bộ 19 bảng dữ liệu nghiệp vụ.
+  - Khởi tạo lại bảng `monthly_balances` kỳ hiện tại (`2026-11`) với số dư đầu kỳ / cuối kỳ = `0 đ`.
+  - Giữ nguyên bảng `user_accounts` (`admin`, `master`) và 4 tài khoản gốc trong `accounts` (`QUY`, `ACB`, `MB`, `TCB`) để duy trì đăng nhập và cấu trúc sổ quỹ.
+- **Trạng thái nghiệm thu**: ✅ Hoàn thành 100%.
+- **Kiểm tra đã chạy**:
+  - Xác minh trực tiếp `COUNT(*)` trên Vercel Neon Postgres: toàn bộ 19 bảng nghiệp vụ = `0 rows`, `monthly_balances` = `1 row (0 đ)`, `accounts` = `4 rows`, `user_accounts` = `2 rows`.
+
+## [11:35] Nâng cấp quyền tài khoản `admin` thành `master` trên Database
+
+- **Phạm vi**:
+  - Cập nhật trực tiếp trên Vercel Neon Postgres (`finance_vpm.user_accounts`) và Local Postgres: đặt `role = 'master'` cho user `admin`.
+- **Trạng thái nghiệm thu**: ✅ Đã thực thi thành công.
+- **Kiểm chứng**:
+  - Cả 2 tài khoản `master` và `admin` hiện đều mang quyền tối cao `role: 'master'`, `is_active: true`.
+  - Mọi thao tác ghi dữ liệu (`POST`, `PATCH`, `DELETE`) từ giao diện sẽ được thông qua mà không bị chặn quyền 403.
